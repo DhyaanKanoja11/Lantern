@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"lantern/internal/collector"
 	"lantern/internal/docker"
+	"lantern/internal/network"
 	"lantern/internal/process"
 )
 
@@ -44,6 +45,12 @@ var scanCmd = &cobra.Command{
 			} else {
 				containerNames[i] = "-"
 			}
+		}
+
+		// Network interface discovery (optional enrichment)
+		netClassifier := network.NewDefaultClassifier()
+		if ifaces, err := netClassifier.DiscoverInterfaces(cmd.Context()); err == nil {
+			_ = ifaces // Discovered interfaces available for exposure enrichment
 		}
 
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 4, ' ', 0)

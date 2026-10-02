@@ -9,4 +9,5 @@ import (
 type InterfaceClassifier interface {
 	DiscoverInterfaces(ctx context.Context) ([]domain.NetworkInterface, error)
 	ClassifyReachability(bindAddr string, ifaces []domain.NetworkInterface) domain.Reachability
+	Assess(ctx context.Context, bindAddr string) (domain.Reachability, []domain.NetworkInterface, error)
 }
