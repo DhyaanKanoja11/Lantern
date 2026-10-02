@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"lantern/internal/collector"
+	"lantern/internal/process"
 )
 
 var scanCmd = &cobra.Command{
@@ -22,6 +23,15 @@ var scanCmd = &cobra.Command{
 		if len(listeners) == 0 {
 			fmt.Fprintln(cmd.OutOrStdout(), "No active TCP listening sockets detected.")
 			return nil
+		}
+
+		inspector := process.NewDefaultInspector()
+		for i := range listeners {
+			if listeners[i].PID > 0 {
+				if proc, err := inspector.Inspect(cmd.Context(), listeners[i].PID); err == nil && proc != nil && proc.Name != "" {
+					listeners[i].ProcessName = proc.Name
+				}
+			}
 		}
 
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 4, ' ', 0)
