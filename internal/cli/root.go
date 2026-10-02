@@ -20,4 +20,5 @@ func init() {
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(scanCmd)
 	rootCmd.AddCommand(whyCmd)
+	rootCmd.AddCommand(fixCmd)
 }
