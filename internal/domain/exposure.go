@@ -24,4 +24,6 @@ type ExposureSummary struct {
 	ProcessName   string `json:"process_name"`
 	PID           int    `json:"pid,omitempty"`
 	ContainerName string `json:"container_name,omitempty"`
+	TargetType    string `json:"target_type,omitempty"`
+	Reachability  string `json:"reachability,omitempty"`
 }
