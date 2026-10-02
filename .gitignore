@@ -1,0 +1,16 @@
+# Root binaries
+/bin/
+/lantern
+/lantern.exe
+*.exe
+
+# Test artifacts
+*.out
+*.test
+coverage.html
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
