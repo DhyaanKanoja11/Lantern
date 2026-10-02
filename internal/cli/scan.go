@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"lantern/internal/collector"
+	"lantern/internal/docker"
 	"lantern/internal/process"
 )
 
@@ -34,14 +35,25 @@ var scanCmd = &cobra.Command{
 			}
 		}
 
+		// Docker correlation (optional enrichment)
+		dockerCorrelator := docker.NewDefaultCorrelator()
+		containerNames := make([]string, len(listeners))
+		for i, l := range listeners {
+			if container, _, err := dockerCorrelator.CorrelateListener(cmd.Context(), l); err == nil && container != nil && container.Name != "" {
+				containerNames[i] = container.Name
+			} else {
+				containerNames[i] = "-"
+			}
+		}
+
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 8, 4, ' ', 0)
-		fmt.Fprintln(w, "PORT\tADDRESS\tPROCESS")
-		for _, l := range listeners {
+		fmt.Fprintln(w, "PORT\tADDRESS\tPROCESS\tCONTAINER")
+		for i, l := range listeners {
 			proc := l.ProcessName
 			if proc == "" {
 				proc = "unknown"
 			}
-			fmt.Fprintf(w, "%d\t%s\t%s\n", l.Port, l.Address, proc)
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", l.Port, l.Address, proc, containerNames[i])
 		}
 		return w.Flush()
 	},

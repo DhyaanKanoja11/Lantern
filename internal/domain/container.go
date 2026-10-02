@@ -13,6 +13,8 @@ type Container struct {
 	ID       string            `json:"id"`
 	Name     string            `json:"name"`
 	Image    string            `json:"image"`
+	Running  bool              `json:"running,omitempty"`
+	HostPID  int               `json:"host_pid,omitempty"`
 	Ports    []PortMapping     `json:"ports,omitempty"`
 	Labels   map[string]string `json:"labels,omitempty"`
 	Networks []string          `json:"networks,omitempty"`
