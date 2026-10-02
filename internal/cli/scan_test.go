@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -13,12 +14,22 @@ func TestScanCommand(t *testing.T) {
 	rootCmd.SetErr(errBuf)
 	rootCmd.SetArgs([]string{"scan"})
 
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if runtime.GOOS != "linux" {
+		if err == nil {
+			t.Fatalf("expected error on non-Linux OS, got nil")
+		}
+		if !strings.Contains(err.Error(), "Linux") {
+			t.Errorf("expected Linux requirement in error message, got: %v", err)
+		}
+		return
+	}
+
+	if err != nil {
 		t.Fatalf("expected no error executing scan command, got %v", err)
 	}
 
 	out := buf.String()
-	// When running without listeners or on non-Linux stub, it should either print the header or no active listeners message
 	if !strings.Contains(out, "PORT") && !strings.Contains(out, "No active TCP listening sockets") {
 		t.Logf("Scan output: %s", out)
 	}

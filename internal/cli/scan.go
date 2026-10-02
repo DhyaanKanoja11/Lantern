@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"lantern/internal/exposure"
 	"lantern/internal/output"
@@ -15,8 +13,7 @@ var scanCmd = &cobra.Command{
 		analyzer := exposure.NewDefaultAnalyzer()
 		summaries, err := analyzer.Scan(cmd.Context())
 		if err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %v\n", err)
-			return nil
+			return err
 		}
 
 		formatter := output.NewTextFormatter()

@@ -14,3 +14,8 @@ coverage.html
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Backups and temporary files
+*.bak
+*.bak.*
+*.tmp

@@ -117,7 +117,7 @@ var fixCmd = &cobra.Command{
 
 			if !res.Success {
 				fmt.Fprintf(cmd.OutOrStdout(), "\nChange applied, but verification failed: %s\nThe original file backup is available at: %s\n", res.ErrorMessage, res.BackupPath)
-				return nil
+				return fmt.Errorf("remediation verification failed")
 			}
 
 			fmt.Fprintln(cmd.OutOrStdout(), "\nFix applied successfully.")
