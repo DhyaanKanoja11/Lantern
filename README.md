@@ -67,8 +67,8 @@ actionable remediation (127.0.0.1:5432:5432)
 ### From Source (Go 1.22+)
 
 ```bash
-git clone https://github.com/lantern-dev/lantern.git
-cd lantern
+git clone https://github.com/DhyaanKanoja11/Lantern.git
+cd Lantern
 go build -o lantern ./cmd/lantern
 ```
 
@@ -136,7 +136,7 @@ Runs diagnostic probes against the runtime environment to report operational cap
 ### `lantern version`
 Prints the semantic version of the binary:
 ```text
-lantern v0.1.0
+lantern v0.1.1
 ```
 
 ### `lantern fix <port> [--dry-run]`

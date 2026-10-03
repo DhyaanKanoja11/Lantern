@@ -22,7 +22,7 @@
 | Component | Status | Required Action |
 | :--- | :--- | :--- |
 | **Specification** | Exists (`PRD.md`) | Maintain as single source of truth |
-| **Go Module** | Missing | Initialize `lantern` (or `github.com/lantern-dev/lantern`) via `go mod init` |
+| **Go Module** | Missing | Initialize `lantern` (or `github.com/DhyaanKanoja11/Lantern`) via `go mod init` |
 | **CLI Entrypoint** | Missing | Create `cmd/lantern/main.go` |
 | **CLI Commands** | Missing | Create `internal/cli/` (`root.go`, `scan.go`, `why.go`, `doctor.go`, `version.go`) |
 | **Domain Layer** | Missing | Create `internal/domain/` pure data models without external dependencies |
@@ -339,7 +339,7 @@ flowchart TD
 ### Milestone 1: Project Scaffolding & Domain Core
 - **Objective:** Establish Go module, directory hierarchy, domain structures, and stub CLI.
 - **Tasks:**
-  1. Initialize `go.mod` (`go mod init lantern` or `github.com/lantern-dev/lantern`).
+  1. Initialize `go.mod` (`go mod init lantern` or `github.com/DhyaanKanoja11/Lantern`).
   2. Create full directory structure matching PRD §21.
   3. Implement domain models in `internal/domain/`.
   4. Scaffold Cobra CLI in `internal/cli/` (`root`, `version`, `doctor`, `scan`, `why`).
@@ -574,7 +574,7 @@ README.md
 
 ## 10. Technical Decisions & Recommendations
 
-1. **Go Module Name:** Use `lantern` (or `github.com/lantern-dev/lantern`). Recommendation: `lantern` for concise local module imports.
+1. **Go Module Name:** Use `lantern` (or `github.com/DhyaanKanoja11/Lantern`). Recommendation: `lantern` for concise local module imports.
 2. **Build Tag Isolation:** Place platform-dependent socket logic in `*_linux.go` with matching `*_stub.go` fallbacks to allow seamless development, compiling, and testing on Windows and macOS.
 3. **YAML AST Traversal:** Use `yaml.Node` instead of map decoding to capture exact line numbers for `ROOT CAUSE` reporting.
 4. **Doctor Safety:** Ensure `lantern doctor` is strictly diagnostic and makes no automatic attempts to repair or modify system configurations.
