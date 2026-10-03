@@ -85,7 +85,7 @@ go install ./cmd/lantern
 - **Operating System**: Linux (kernel 3.10+) or WSL2 (Windows Subsystem for Linux 2).
 - **Permissions**: Standard user access; read permissions on `/proc` for detailed process attribution.
 - **Socket Tool**: `ss` utility (standard on most Linux distributions; falls back to `/proc/net/tcp`).
-- **Container Tooling (Optional)**: Docker CLI and daemon connectivity for container and Compose correlation.
+- **Container Tooling (Optional)**: Docker CLI and daemon connectivity for container and Compose correlation. In WSL2 environments using Docker Desktop, WSL integration must be enabled for the active distribution.
 
 ---
 
@@ -263,6 +263,7 @@ services:
 - **Rootless / Host Networking**: Containers using `--net=host` share the host network stack; Lantern attributes them to the container only when PID correlation is established.
 - **Native Process Configuration**: Automatic remediation is not supported for arbitrary native processes because application configuration formats vary widely.
 - **Standalone Containers**: Containers created via raw `docker run` without a Compose file cannot be remediated via Compose editing.
+- **Docker Desktop with WSL2 Networking**: When running Docker Desktop on Windows with the WSL2 backend, published container ports may be forwarded through a virtualized networking layer (or utility distribution) that is not directly visible as a host listening socket or process inside the user's WSL2 distribution. This networking indirection can prevent deterministic listener-to-container attribution. Consistent with Lantern's conservative reachability model, Lantern does not claim that such ports are Internet-exposed and maintains its standard conservative semantics (treating external reachability as UNKNOWN without direct evidence).
 - **Conservative Reachability**: Lantern never claims public Internet exposure without external verification. Wildcard bindings are classified as `LAN reachable` with `Internet: UNKNOWN`.
 
 ---

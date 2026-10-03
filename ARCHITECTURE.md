@@ -95,7 +95,7 @@ No lower layer ever imports from a higher layer. The domain holds pure data type
 
 ### `internal/compose`
 - **Responsibilities**: Docker Compose configuration discovery and AST parsing.
-- **Discovery**: Searches container labels (`com.docker.compose.project.config_files`, `com.docker.compose.project.working_dir`), current working directory, and parent directories for `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, and `compose.yaml`.
+- **Discovery**: Bounded search prioritizing explicit container labels (`com.docker.compose.project.config_files`, `com.docker.compose.project.working_dir`) and fallback predictable filenames (`compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml`) in the project working directory; never scans parent directories recursively.
 - **Parser**: Uses `gopkg.in/yaml.v3` `yaml.Node` to parse YAML ASTs, capturing 1-indexed source line numbers for `ports:` declarations.
 
 ### `internal/network`

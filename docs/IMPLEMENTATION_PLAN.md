@@ -11,11 +11,11 @@
 ## 1. Repository Status & Gap Analysis
 
 ### Current State
-- Repository Root: `C:\Users\dhyaa\Desktop\Lantern`
+- Repository Root: `<repository-root>`
 - Current contents: `PRD.md` only.
 - Git repository: Uninitialized (no `.git`).
 - Go module: None (`go.mod` does not exist).
-- Available toolchain: `go version go1.26.5 windows/amd64`.
+- Available toolchain: `Go 1.22+`.
 
 ### Gap Analysis (What Exists vs. What Needs to Be Created)
 
