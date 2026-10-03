@@ -190,7 +190,7 @@ Displays detailed help, usage patterns, and available flags for any command.
 1. **Listener Collection**: Collects active TCP listening sockets via `ss` (or `/proc/net/tcp` and `/proc/net/tcp6`).
 2. **Process Attribution**: Reads socket inode links in `/proc/<pid>/fd/` and correlates process metadata (`comm`, `cmdline`, `stat`) from `/proc/<pid>/`.
 3. **Docker Correlation**: Inspects container network settings via the Docker API, mapping host port publish bindings (`HostIp:HostPort -> ContainerPort`) to discovered host listeners.
-4. **Compose AST Discovery**: Discovers Compose files via container labels or directory walking. Uses YAML AST nodes (`gopkg.in/yaml.v3`) to locate the exact service declaration and 1-indexed line number.
+4. **Compose Discovery**: Discovers relevant Compose files using bounded, evidence-driven discovery rather than unrestricted filesystem traversal. Uses YAML AST nodes (`gopkg.in/yaml.v3`) to locate the exact service declaration and 1-indexed line number.
 5. **Network Interface Classification**: Enumerates local interfaces via `net.Interfaces()`. Classifies addresses into `LOOPBACK`, `LAN` (RFC1918, RFC4193), `VPN` (tun, tap, wg, tailscale), or `OTHER`.
 6. **Reachability Evaluation**:
    - `127.0.0.1` / `::1` -> `Local machine only` (LAN: NO, Internet: UNKNOWN).
