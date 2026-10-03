@@ -1,0 +1,8 @@
+# Deliberately exposed demo configuration for Lantern test drive
+services:
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"  # Wildcard binding (0.0.0.0) deliberately used for demonstration
+    environment:
+      POSTGRES_PASSWORD: demo
