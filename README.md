@@ -2,7 +2,7 @@
 
 > See exactly why your development machine exposes a service — and fix it.
 
-[![Release](https://img.shields.io/badge/release-v0.1.1-blue.svg)](https://github.com/DhyaanKanoja11/Lantern/releases)
+[![Release](https://img.shields.io/badge/release-v0.1.2-blue.svg)](https://github.com/DhyaanKanoja11/Lantern/releases)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20WSL2-lightgrey.svg)](#platform-support)
@@ -17,11 +17,16 @@ postgres :5432
 EXPOSURE PATH
 
 docker-compose.yml
-    └── ports: 5432:5432
-        └── Docker container: postgres
-            └── socket: 0.0.0.0:5432 (tcp)
-                └── eth0 (192.168.1.50) [LAN]
-                    └── LAN reachable
+       ↓
+5432:5432
+       ↓
+Docker container: postgres
+       ↓
+0.0.0.0:5432
+       ↓
+eth0 (192.168.1.50)
+       ↓
+LAN reachable
 
 ROOT CAUSE
 
@@ -61,6 +66,22 @@ Existing tools answer *"Which ports are open?"* but cannot answer:
 
 ---
 
+## Questions Lantern Answers
+
+- **Why is port 5432 exposed to my local network?**
+  `lantern why 5432` inspects the active socket, attributes it to its owning process or container (`docker-proxy`), and maps the listening address against your local network interfaces to explain why it is reachable.
+
+- **Which Docker Compose file or line caused this port to be exposed?**
+  Lantern inspects container labels, resolves the relevant Compose file via YAML AST parsing, and identifies the exact declaration line (e.g., `docker-compose.yml:18: 5432:5432`).
+
+- **Is this service reachable from localhost, LAN, or VPN?**
+  Lantern enumerates local network interfaces to evaluate reachability conservatively: loopback addresses (`127.0.0.1`) are classified as `localhost only`, while wildcard bindings (`0.0.0.0`) on active interfaces are classified as `LAN reachable` (with Internet exposure remaining `UNKNOWN` unless external evidence exists).
+
+- **How can I safely restrict a supported Docker Compose binding to localhost?**
+  `lantern fix 5432` generates a deterministic change to `127.0.0.1:5432:5432`. It verifies file SHA-256 fingerprints before and after writing, creates a byte-verified backup, prompts for interactive confirmation, and applies an atomic write.
+
+---
+
 ## Quick Start (30 Seconds)
 
 ### 1. Install
@@ -70,13 +91,15 @@ Requires Go 1.22+:
 ```bash
 git clone https://github.com/DhyaanKanoja11/Lantern.git
 cd Lantern
-go build -o lantern ./cmd/lantern
-```
-
-To install directly to `$GOPATH/bin`:
-```bash
 go install ./cmd/lantern
 ```
+
+Ensure your Go bin directory is in your `PATH` (if not already set):
+```bash
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
+
+*(Alternatively, to build locally without installing: `go build -o lantern ./cmd/lantern` and invoke as `./lantern` or `../lantern` from subdirectories).*
 
 ### 2. Verify Your Environment
 
@@ -155,7 +178,7 @@ Runs diagnostic probes against the runtime environment to report operational cap
 ### `lantern version`
 Prints the semantic version of the binary:
 ```text
-lantern v0.1.1
+lantern v0.1.2
 ```
 
 ### `lantern [command] --help`
