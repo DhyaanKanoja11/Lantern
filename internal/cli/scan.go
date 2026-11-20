@@ -11,12 +11,12 @@ var scanCmd = &cobra.Command{
 	Short: "Discover TCP listening services",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		analyzer := exposure.NewDefaultAnalyzer()
-		summaries, err := analyzer.Scan(cmd.Context())
+		report, err := analyzer.ScanReport(cmd.Context())
 		if err != nil {
 			return err
 		}
 
 		formatter := output.NewTextFormatter()
-		return formatter.RenderScan(cmd.OutOrStdout(), summaries)
+		return formatter.RenderScan(cmd.OutOrStdout(), report.Summaries, report.Notices...)
 	},
 }

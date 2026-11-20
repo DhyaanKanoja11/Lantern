@@ -157,8 +157,9 @@ func (a *DefaultAnalyzer) Why(ctx context.Context, port uint16, projectDir strin
 	return exp, nil
 }
 
-// Scan discovers all listening services and enriches them with process, container, and reachability metadata.
-func (a *DefaultAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, error) {
+// ScanReport discovers all listening services, enriches them with process, container,
+// and reachability metadata, and collects platform diagnostic notices.
+func (a *DefaultAnalyzer) ScanReport(ctx context.Context) (*domain.ScanReport, error) {
 	if a.collector == nil {
 		return nil, errors.New("listener collector unavailable")
 	}
@@ -168,8 +169,31 @@ func (a *DefaultAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, e
 		return nil, fmt.Errorf("failed to collect listening sockets: %w", err)
 	}
 
+	var notices []string
+	var dockerErr error
+	if a.docker != nil {
+		dockerErr = a.docker.CheckDaemon(ctx)
+		if dockerErr != nil {
+			switch {
+			case errors.Is(dockerErr, docker.ErrDaemonStopped):
+				notices = append(notices, "Docker daemon is not running. Sockets were collected from the host, but container correlation was skipped.")
+			case errors.Is(dockerErr, docker.ErrDockerPermissionDenied):
+				notices = append(notices, "Permission denied connecting to Docker daemon socket. Run with sudo or join the 'docker' group to enable container correlation.")
+			case errors.Is(dockerErr, docker.ErrDockerSocketMissing):
+				notices = append(notices, "Docker daemon socket not found. Ensure Docker is running.")
+			case errors.Is(dockerErr, docker.ErrDockerNotAvailable):
+				notices = append(notices, "Docker CLI is not available in PATH. Container correlation was skipped.")
+			default:
+				notices = append(notices, fmt.Sprintf("Docker daemon is unreachable (%v). Container correlation was skipped.", dockerErr))
+			}
+		}
+	}
+
 	if len(listeners) == 0 {
-		return nil, nil
+		return &domain.ScanReport{
+			Summaries: nil,
+			Notices:   notices,
+		}, nil
 	}
 
 	var ifaces []domain.NetworkInterface
@@ -196,7 +220,7 @@ func (a *DefaultAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, e
 		}
 
 		var container *domain.Container
-		if a.docker != nil {
+		if a.docker != nil && dockerErr == nil {
 			if c, _, err := a.docker.CorrelateListener(ctx, l); err == nil && c != nil {
 				container = c
 			}
@@ -212,6 +236,8 @@ func (a *DefaultAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, e
 			} else {
 				targetType = "Docker"
 			}
+		} else if strings.EqualFold(procName, "docker-proxy") {
+			targetType = "Docker (unattributed)"
 		} else if proc == nil && l.PID == 0 {
 			targetType = "-"
 		}
@@ -234,7 +260,19 @@ func (a *DefaultAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, e
 		})
 	}
 
-	return summaries, nil
+	return &domain.ScanReport{
+		Summaries: summaries,
+		Notices:   notices,
+	}, nil
+}
+
+// Scan discovers all listening services and enriches them with process, container, and reachability metadata.
+func (a *DefaultAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, error) {
+	report, err := a.ScanReport(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return report.Summaries, nil
 }
 
 func isAmbiguousListeners(listeners []domain.Listener) bool {

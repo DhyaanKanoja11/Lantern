@@ -171,6 +171,15 @@ func TestPlan_InferredAttribution_ProducesTentativeAndBlocksApply(t *testing.T) 
 	if !strings.Contains(err.Error(), "only SUPPORTED remediations can be applied") {
 		t.Errorf("unexpected error message: %v", err)
 	}
+
+	// Verify file was NOT touched by rejected Apply
+	afterData, readErr := os.ReadFile(composePath)
+	if readErr != nil {
+		t.Fatalf("failed to read compose file: %v", readErr)
+	}
+	if string(afterData) != composeContent {
+		t.Errorf("file should not have been modified on rejected Apply")
+	}
 }
 
 // 2. Loopback Compose exposure produces no remediation (unsupported/already secure)

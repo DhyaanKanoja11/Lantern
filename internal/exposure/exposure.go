@@ -9,4 +9,5 @@ import (
 type Analyzer interface {
 	Why(ctx context.Context, port uint16, projectDir string) (*domain.Exposure, error)
 	Scan(ctx context.Context) ([]domain.ExposureSummary, error)
+	ScanReport(ctx context.Context) (*domain.ScanReport, error)
 }

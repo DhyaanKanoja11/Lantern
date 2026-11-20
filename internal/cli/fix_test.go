@@ -28,6 +28,10 @@ func (m *mockFixAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, e
 	return nil, nil
 }
 
+func (m *mockFixAnalyzer) ScanReport(ctx context.Context) (*domain.ScanReport, error) {
+	return &domain.ScanReport{}, nil
+}
+
 func TestFixCommand_InvalidPort(t *testing.T) {
 	buf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)

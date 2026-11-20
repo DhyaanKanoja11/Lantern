@@ -334,4 +334,52 @@ func TestTextFormatter_RenderWhy_InferredAttribution(t *testing.T) {
 	if !strings.Contains(out, "Docker container: webapp (inferred from published port)") {
 		t.Errorf("expected path to indicate inferred attribution, got:\n%s", out)
 	}
+
+	// ATTRIBUTION NOTICE must be explicitly printed with diagnostic details
+	expectedSnippets := []string{
+		"ATTRIBUTION NOTICE",
+		"Attribution mode: INFERRED (uncertain)",
+		"Process verification: Unverified",
+		"Live remediation: BLOCKED",
+		"lantern fix 8080 --dry-run",
+	}
+	for _, snip := range expectedSnippets {
+		if !strings.Contains(out, snip) {
+			t.Errorf("expected inferred attribution notice to contain %q, but got:\n%s", snip, out)
+		}
+	}
+}
+
+func TestTextFormatter_RenderScan_WithNotices(t *testing.T) {
+	formatter := NewTextFormatter()
+	buf := new(bytes.Buffer)
+
+	list := []domain.ExposureSummary{
+		{
+			Port:          5432,
+			Protocol:      "tcp",
+			Address:       "0.0.0.0",
+			ProcessName:   "docker-proxy",
+			ContainerName: "-",
+			TargetType:    "Docker (unattributed)",
+			Reachability:  "LAN reachable",
+		},
+	}
+
+	notice := "Docker daemon is not running. Sockets were collected from the host, but container correlation was skipped."
+	err := formatter.RenderScan(buf, list, notice)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "PORT") || !strings.Contains(out, "5432") {
+		t.Errorf("expected table to be rendered, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Note: "+notice) {
+		t.Errorf("expected notice to be rendered below table, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Run 'lantern doctor' for complete environment diagnostics.") {
+		t.Errorf("expected doctor suggestion, got:\n%s", out)
+	}
 }

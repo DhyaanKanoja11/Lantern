@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"lantern/internal/docker"
 	"lantern/internal/domain"
 	"lantern/internal/explain"
 )
@@ -57,6 +58,7 @@ type mockDocker struct {
 	containers map[uint16]*domain.Container
 	mappings   map[uint16]*domain.PortMapping
 	available  bool
+	daemonErr  error
 }
 
 func (m *mockDocker) ListContainers(ctx context.Context) ([]domain.Container, error) {
@@ -96,6 +98,10 @@ func (m *mockDocker) CorrelateListener(ctx context.Context, l domain.Listener) (
 		return c, m.mappings[l.Port], nil
 	}
 	return nil, nil, errors.New("not found")
+}
+
+func (m *mockDocker) CheckDaemon(ctx context.Context) error {
+	return m.daemonErr
 }
 
 // Mock ComposeResolver
@@ -321,5 +327,51 @@ func TestAnalyzer_Scan(t *testing.T) {
 	}
 	if !strings.Contains(s2.Reachability, "localhost only") {
 		t.Errorf("expected localhost only for 127.0.0.1, got %s", s2.Reachability)
+	}
+}
+
+func TestAnalyzer_ScanReport_DockerUnavailable(t *testing.T) {
+	col := &mockCollector{
+		listeners: []domain.Listener{
+			{Protocol: "tcp", Address: "0.0.0.0", Port: 5432, PID: 1000, ProcessName: "docker-proxy"},
+			{Protocol: "tcp", Address: "127.0.0.1", Port: 3000, PID: 2000, ProcessName: "node"},
+		},
+	}
+	insp := &mockInspector{
+		procs: map[int]*domain.Process{
+			1000: {PID: 1000, Name: "docker-proxy"},
+			2000: {PID: 2000, Name: "node"},
+		},
+	}
+	doc := &mockDocker{
+		daemonErr: docker.ErrDaemonStopped,
+	}
+	net := &mockNetwork{
+		ifaces: []domain.NetworkInterface{{Name: "eth0", IP: "192.168.1.10", Kind: "LAN", IsUp: true}},
+	}
+
+	analyzer := NewAnalyzerWithDeps(col, insp, doc, nil, net, explain.NewDefaultExplainer())
+	report, err := analyzer.ScanReport(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(report.Notices) != 1 {
+		t.Fatalf("expected 1 notice, got %d", len(report.Notices))
+	}
+	if !strings.Contains(report.Notices[0], "Docker daemon is not running") {
+		t.Errorf("expected daemon stopped notice, got: %s", report.Notices[0])
+	}
+
+	// docker-proxy should NOT be native!
+	s1 := report.Summaries[0]
+	if s1.TargetType != "Docker (unattributed)" {
+		t.Errorf("expected 'Docker (unattributed)' for docker-proxy when daemon stopped, got: %s", s1.TargetType)
+	}
+
+	// node should still be native
+	s2 := report.Summaries[1]
+	if s2.TargetType != "native" {
+		t.Errorf("expected 'native' for node, got: %s", s2.TargetType)
 	}
 }

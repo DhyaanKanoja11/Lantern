@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os/exec"
@@ -15,7 +16,8 @@ type CommandRunner func(ctx context.Context, name string, args ...string) ([]byt
 
 // CLIClient implements DockerCorrelator using the system `docker` CLI.
 type CLIClient struct {
-	runner CommandRunner
+	runner   CommandRunner
+	lookPath func(file string) (string, error)
 }
 
 // NewCLIClient creates a new CLIClient with the default exec runner.
@@ -25,7 +27,12 @@ func NewCLIClient() *CLIClient {
 
 // NewCLIClientWithRunner allows injecting a custom CommandRunner for deterministic testing.
 func NewCLIClientWithRunner(runner CommandRunner) *CLIClient {
-	return &CLIClient{runner: runner}
+	return &CLIClient{runner: runner, lookPath: exec.LookPath}
+}
+
+// SetLookPath allows overriding the lookPath resolver in hermetic tests.
+func (c *CLIClient) SetLookPath(lp func(file string) (string, error)) {
+	c.lookPath = lp
 }
 
 func defaultCommandRunner(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -33,14 +40,28 @@ func defaultCommandRunner(ctx context.Context, name string, args ...string) ([]b
 	return cmd.Output()
 }
 
-// IsAvailable checks whether the docker CLI is present and the daemon is responsive.
-func (c *CLIClient) IsAvailable(ctx context.Context) bool {
-	_, err := exec.LookPath("docker")
+// CheckDaemon checks whether the Docker CLI is installed and the daemon is reachable.
+// Returns typed errors distinguishing daemon stopped, socket missing, permission denied,
+// or executable missing.
+func (c *CLIClient) CheckDaemon(ctx context.Context) error {
+	look := c.lookPath
+	if look == nil {
+		look = exec.LookPath
+	}
+	_, err := look("docker")
 	if err != nil {
-		return false
+		return ErrDockerNotAvailable
 	}
 	_, err = c.runner(ctx, "docker", "ps", "-q")
-	return err == nil
+	if err != nil {
+		return wrapDockerError(err)
+	}
+	return nil
+}
+
+// IsAvailable checks whether the docker CLI is present and the daemon is responsive.
+func (c *CLIClient) IsAvailable(ctx context.Context) bool {
+	return c.CheckDaemon(ctx) == nil
 }
 
 // ListContainers lists all currently running Docker containers with detailed metadata.
@@ -327,15 +348,35 @@ func (c *CLIClient) CorrelateListener(ctx context.Context, l domain.Listener) (*
 	return nil, nil, ErrContainerNotFound
 }
 
+func extractErrorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+		return string(exitErr.Stderr) + " " + err.Error()
+	}
+	return err.Error()
+}
+
 func wrapDockerError(err error) error {
 	if err == nil {
 		return nil
 	}
-	errStr := strings.ToLower(err.Error())
-	if strings.Contains(errStr, "not found") || strings.Contains(errStr, "executable file not found") {
+	errStr := strings.ToLower(extractErrorText(err))
+	if strings.Contains(errStr, "executable file not found") || strings.Contains(errStr, "not found in $path") || strings.Contains(errStr, "not found in %path%") {
 		return ErrDockerNotAvailable
 	}
-	if strings.Contains(errStr, "daemon") || strings.Contains(errStr, "connect") || strings.Contains(errStr, "permission denied") {
+	if strings.Contains(errStr, "permission denied") {
+		return ErrDockerPermissionDenied
+	}
+	if strings.Contains(errStr, "no such file or directory") {
+		return ErrDockerSocketMissing
+	}
+	if strings.Contains(errStr, "is the docker daemon running") || strings.Contains(errStr, "cannot connect to the docker daemon") || strings.Contains(errStr, "connection refused") {
+		return ErrDaemonStopped
+	}
+	if strings.Contains(errStr, "daemon") || strings.Contains(errStr, "connect") || strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline exceeded") {
 		return ErrDaemonNotAvailable
 	}
 	return fmt.Errorf("docker command failed: %w", err)

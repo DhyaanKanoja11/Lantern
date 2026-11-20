@@ -650,6 +650,68 @@ func TestCLIClient_CorrelateListener_StrictFallback(t *testing.T) {
 	}
 }
 
+func TestCLIClient_CheckDaemon_Diagnostics(t *testing.T) {
+	tests := []struct {
+		name          string
+		errMsg        string
+		expectedErr   error
+		isDaemonError bool
+	}{
+		{
+			name:          "daemon stopped",
+			errMsg:        "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+			expectedErr:   ErrDaemonStopped,
+			isDaemonError: true,
+		},
+		{
+			name:          "permission denied",
+			errMsg:        "got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock",
+			expectedErr:   ErrDockerPermissionDenied,
+			isDaemonError: true,
+		},
+		{
+			name:          "socket missing",
+			errMsg:        "dial unix /var/run/docker.sock: connect: no such file or directory",
+			expectedErr:   ErrDockerSocketMissing,
+			isDaemonError: true,
+		},
+		{
+			name:          "not on path",
+			errMsg:        "executable file not found in $PATH",
+			expectedErr:   ErrDockerNotAvailable,
+			isDaemonError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runner := func(ctx context.Context, name string, args ...string) ([]byte, error) {
+				return nil, errors.New(tt.errMsg)
+			}
+			client := NewCLIClientWithRunner(runner)
+			if tt.expectedErr != ErrDockerNotAvailable {
+				client.SetLookPath(func(file string) (string, error) {
+					return "/usr/bin/docker", nil
+				})
+			} else {
+				client.SetLookPath(func(file string) (string, error) {
+					return "", errors.New("not found")
+				})
+			}
+			err := client.CheckDaemon(context.Background())
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !errors.Is(err, tt.expectedErr) {
+				t.Errorf("expected %v, got %v", tt.expectedErr, err)
+			}
+			if tt.isDaemonError && !errors.Is(err, ErrDaemonNotAvailable) {
+				t.Errorf("expected error to also match ErrDaemonNotAvailable, got %v", err)
+			}
+		})
+	}
+}
+
 func TestCLIClient_IsAvailable(t *testing.T) {
 	// Success runner
 	clientOk := NewCLIClientWithRunner(func(ctx context.Context, name string, args ...string) ([]byte, error) {

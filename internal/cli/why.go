@@ -13,7 +13,15 @@ import (
 var whyCmd = &cobra.Command{
 	Use:   "why <port>",
 	Short: "Explain why a network service is reachable",
-	Args:  cobra.ExactArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return errors.New("port required. Run 'lantern scan' to see active listening ports, then run 'lantern why <port>'")
+		}
+		if len(args) > 1 {
+			return fmt.Errorf("accepts 1 arg(s), received %d", len(args))
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		portVal, err := strconv.ParseUint(args[0], 10, 32)
 		if err != nil {

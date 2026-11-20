@@ -27,3 +27,9 @@ type ExposureSummary struct {
 	TargetType    string `json:"target_type,omitempty"`
 	Reachability  string `json:"reachability,omitempty"`
 }
+
+// ScanReport encapsulates discovery summaries and environment diagnostic notices for `lantern scan`.
+type ScanReport struct {
+	Summaries []ExposureSummary `json:"summaries"`
+	Notices   []string          `json:"notices,omitempty"`
+}

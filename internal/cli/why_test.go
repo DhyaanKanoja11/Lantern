@@ -62,6 +62,10 @@ func TestWhyCommand_MissingArg(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when port argument is omitted, got nil")
 	}
+	expectedMsg := "port required. Run 'lantern scan' to see active listening ports, then run 'lantern why <port>'"
+	if !strings.Contains(err.Error(), expectedMsg) {
+		t.Errorf("expected error message to contain %q, got: %v", expectedMsg, err)
+	}
 }
 
 func TestWhyCommand_NoListener(t *testing.T) {

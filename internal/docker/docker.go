@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"lantern/internal/domain"
 )
@@ -12,6 +13,12 @@ var (
 	ErrDockerNotAvailable = errors.New("docker CLI is not available in PATH")
 	// ErrDaemonNotAvailable indicates the Docker daemon is stopped, unreachable, or permission is denied.
 	ErrDaemonNotAvailable = errors.New("docker daemon is not accessible")
+	// ErrDaemonStopped indicates the Docker daemon service is not running.
+	ErrDaemonStopped = fmt.Errorf("%w: daemon is not running", ErrDaemonNotAvailable)
+	// ErrDockerSocketMissing indicates the Docker socket file was not found.
+	ErrDockerSocketMissing = fmt.Errorf("%w: socket file not found", ErrDaemonNotAvailable)
+	// ErrDockerPermissionDenied indicates permission was denied connecting to the Docker socket.
+	ErrDockerPermissionDenied = fmt.Errorf("%w: connection permission denied", ErrDaemonNotAvailable)
 	// ErrContainerNotFound indicates no matching container was discovered.
 	ErrContainerNotFound = errors.New("container not found")
 	// ErrAmbiguousMapping indicates multiple containers legitimately match the same listener address and port.
@@ -28,6 +35,7 @@ type Client interface {
 type DockerCorrelator interface {
 	Client
 	IsAvailable(ctx context.Context) bool
+	CheckDaemon(ctx context.Context) error
 	CorrelatePID(ctx context.Context, pid int) (*domain.Container, *domain.PortMapping, error)
 	CorrelatePort(ctx context.Context, address string, port uint16) (*domain.Container, *domain.PortMapping, error)
 	CorrelateListener(ctx context.Context, l domain.Listener) (*domain.Container, *domain.PortMapping, error)
