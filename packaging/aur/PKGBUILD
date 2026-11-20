@@ -1,6 +1,6 @@
 # Maintainer: Dhyaan Kanoja <https://github.com/DhyaanKanoja11>
 pkgname=lantern-bin
-pkgver=0.2.0
+pkgver=0.2.1
 pkgrel=1
 pkgdesc="Local-first developer security tool explaining configuration causality behind exposed services"
 arch=('x86_64' 'aarch64')
@@ -12,10 +12,10 @@ provides=('lantern')
 conflicts=('lantern')
 
 source_x86_64=("https://github.com/DhyaanKanoja11/Lantern/releases/download/v${pkgver}/lantern_${pkgver}_linux_amd64.tar.gz")
-sha256sums_x86_64=('3520b2833f13619d5b5435fe7bb2b857e63c98e0fe2bdb91e404b8a7a01ad18d')
+sha256sums_x86_64=('7d46ba766397657806ff6e94832dff53c926ab350a163596ec4bb78b7063dd3f')
 
 source_aarch64=("https://github.com/DhyaanKanoja11/Lantern/releases/download/v${pkgver}/lantern_${pkgver}_linux_arm64.tar.gz")
-sha256sums_aarch64=('c32dbb1a2de8bd4a76ec1dea52cd83141f25a96566ca2f273cedd93d90eb1275')
+sha256sums_aarch64=('0ef2c1449c2c6cfd01483bfb08187e03459d9c4de044d4b2f1be5e9a94dbba60')
 
 package() {
     install -Dm755 "${srcdir}/lantern" "${pkgdir}/usr/bin/lantern"

@@ -178,7 +178,7 @@ The script automatically:
 
 To install a specific version:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | LANTERN_VERSION=v0.2.0 bash
+curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | LANTERN_VERSION=v0.2.1 bash
 ```
 
 To uninstall:

@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
 PackageIdentifier: DhyaanKanoja11.Lantern
-PackageVersion: 0.2.0
+PackageVersion: 0.2.1
 PackageName: Lantern
 Publisher: Dhyaan Kanoja
 PublisherUrl: https://github.com/DhyaanKanoja11
@@ -19,7 +19,7 @@ Tags:
   - ports
   - networking
   - cli
-ReleaseDate: 2026-11-20
+ReleaseDate: 2026-11-21
 Installers:
   - Architecture: x64
     InstallerType: zip
@@ -27,7 +27,7 @@ Installers:
     NestedInstallerFiles:
       - RelativeFilePath: lantern.exe
         PortableCommandAlias: lantern
-    InstallerUrl: https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.0/lantern_0.2.0_windows_amd64.zip
-    InstallerSha256: ca16d2cc45593437e244c6ddbd7c775853407456006944f15253661a5a31fd71
+    InstallerUrl: https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.1/lantern_0.2.1_windows_amd64.zip
+    InstallerSha256: 2671bd17a0866cd41db9d88578bbf8c25b4acaa4f3528a1325982b9fded3804e
 ManifestType: singleton
 ManifestVersion: 1.6.0

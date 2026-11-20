@@ -5,21 +5,21 @@
 class Lantern < Formula
   desc "Local-first developer security tool explaining service reachability causality"
   homepage "https://github.com/DhyaanKanoja11/Lantern"
-  version "0.2.0"
+  version "0.2.1"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.0/lantern_0.2.0_darwin_arm64.tar.gz"
-      sha256 "7d50ef21324081877af0239986060cf3488e3cb45861ad72a660db6fc7b36348"
+      url "https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.1/lantern_0.2.1_darwin_arm64.tar.gz"
+      sha256 "8c9d6e4b45006e0f39440c347491022da0c6e37e0fa15b5ee5364f6f321c1ac5"
 
       def install
         bin.install "lantern"
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.0/lantern_0.2.0_darwin_amd64.tar.gz"
-      sha256 "b01cc8170e9a3c0c1f838e5f08865e6e91edc1514d67774061a8dcbb67dc431e"
+      url "https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.1/lantern_0.2.1_darwin_amd64.tar.gz"
+      sha256 "9a6784b17005aeae7e138083390484842cdc6f2ea26dae0035b6f701b9523b23"
 
       def install
         bin.install "lantern"
@@ -29,16 +29,16 @@ class Lantern < Formula
 
   on_linux do
     if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.0/lantern_0.2.0_linux_arm64.tar.gz"
-      sha256 "c32dbb1a2de8bd4a76ec1dea52cd83141f25a96566ca2f273cedd93d90eb1275"
+      url "https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.1/lantern_0.2.1_linux_arm64.tar.gz"
+      sha256 "0ef2c1449c2c6cfd01483bfb08187e03459d9c4de044d4b2f1be5e9a94dbba60"
 
       def install
         bin.install "lantern"
       end
     end
     if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.0/lantern_0.2.0_linux_amd64.tar.gz"
-      sha256 "3520b2833f13619d5b5435fe7bb2b857e63c98e0fe2bdb91e404b8a7a01ad18d"
+      url "https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.1/lantern_0.2.1_linux_amd64.tar.gz"
+      sha256 "7d46ba766397657806ff6e94832dff53c926ab350a163596ec4bb78b7063dd3f"
 
       def install
         bin.install "lantern"

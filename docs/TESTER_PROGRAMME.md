@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install
 ```
 
 **Option B (Pre-compiled Binary):**
-Download the appropriate archive for your architecture from [GitHub Releases](https://github.com/DhyaanKanoja11/Lantern/releases/tag/v0.2.0) and place the `lantern` executable in your `$PATH`.
+Download the appropriate archive for your architecture from [GitHub Releases](https://github.com/DhyaanKanoja11/Lantern/releases/tag/v0.2.1) and place the `lantern` executable in your `$PATH`.
 
 **Option C (Go Install — Go 1.22+):**
 ```bash
