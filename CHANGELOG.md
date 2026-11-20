@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.2.1] - 2026-11-21
+
+### Added
+- **Package Manager Manifests**: Dedicated distribution manifests for Homebrew (`packaging/homebrew/lantern.rb`), Scoop (`packaging/scoop/lantern.json`), WinGet (`packaging/winget/DhyaanKanoja11.Lantern.yaml`), and Arch Linux AUR (`packaging/aur/PKGBUILD`, `packaging/aur/.SRCINFO`).
+- **Debian & RPM Packaging**: Integrated NFPMs packaging into GoReleaser generating native `.deb` and `.rpm` packages for `amd64` and `arm64`.
+- **External Tester Programme**: Documented 6-step testing workflow in `docs/TESTER_PROGRAMME.md` and added structured GitHub issue template `.github/ISSUE_TEMPLATE/tester_feedback.md`.
+- **Shell Profile Detection**: Enhanced `install.sh` with automatic user shell detection (`zsh`, `bash`, `fish`) and exact copy-pasteable PATH persistence instructions.
+- **Docker Daemon Health Diagnostics**: Added `CheckDaemon` with typed sentinel errors (`ErrDaemonStopped`, `ErrDockerSocketMissing`, `ErrDockerPermissionDenied`).
+- **Unattributed Docker Attribution Notice**: Gracefully degrades to `Docker (unattributed)` with clear explanatory notices when Docker daemon is unreachable.
+
+### Fixed
+- **Bare `lantern why` Guidance**: Displays actionable usage guidance (`Port required. Run 'lantern scan' to see active listening ports, then run 'lantern why <port>'`) instead of an unhelpful error.
+- **Fail-Closed Remediation Non-Modification Assertion**: Added explicit regression assertion confirming files remain unmodified after rejected `Apply` attempts.
+- **Installer CRLF Line-Ending Protection**: Added `.gitattributes` to enforce LF endings across shell scripts and Go sources.
+
+### Changed
+- Reorganized `README.md` into tiered installation architecture (Package Managers, Universal Installer, Pre-Built Archives, Source).
+- Updated internal version constants and default fallbacks to `v0.2.1`.
+
+---
+
 ## [v0.2.0] - 2026-11-20
 
 ### Added

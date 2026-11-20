@@ -12,7 +12,7 @@
 set -eu
 
 REPO="DhyaanKanoja11/Lantern"
-FALLBACK_VERSION="v0.2.0"
+FALLBACK_VERSION="v0.2.1"
 
 # Colors for terminal output
 BOLD="\033[1m"

@@ -16,8 +16,8 @@ func TestVersionCommand(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "lantern v0.2.0") {
-		t.Errorf("expected version output to contain 'lantern v0.2.0', got: %s", out)
+	if !strings.Contains(out, "lantern "+Version) {
+		t.Errorf("expected version output to contain 'lantern %s', got: %s", Version, out)
 	}
 }
 
