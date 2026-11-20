@@ -19,6 +19,33 @@ Before contributing code, please keep our design principles in mind:
 
 ---
 
+## Finding Something to Work On
+
+We welcome contributions of all levels. To protect user safety and code maintainability, we classify tasks into two tracks:
+
+### Beginner-Friendly Contributions ("Good First Issues")
+These areas have minimal blast radius and do not touch security-critical file modification logic:
+- **Diagnostic Probes**: Adding or improving probes in `lantern doctor` (e.g. checking specific container runtime sockets or permissions).
+- **CLI Output Ergonomics**: Improving formatting, table alignment, or help text descriptions.
+- **Documentation & Guides**: Clarifying README examples, platform limitations, or adding troubleshooting scenarios.
+- **Test Scenarios**: Writing hermetic unit tests for edge-case Compose configurations or socket parsing.
+
+Look for the [`good first issue`](https://github.com/DhyaanKanoja11/Lantern/labels/good%20first%20issue) label on GitHub.
+
+### Security-Critical & Core Architecture Areas
+The following areas enforce safety invariants and require architectural review prior to implementation:
+- **YAML AST Modification (`internal/remediation`)**: TOCTOU hash verification, AST line targeting, byte-verified backups, and atomic writes.
+- **Reachability Analysis (`internal/analyzer`)**: Interface classification and cross-family socket attribution.
+- **Platform Syscalls & Collectors (`internal/collector`)**: Low-level `/proc/net` parsers and socket table handling.
+
+---
+
+## External Tester Programme
+
+If you are a developer using Docker Compose, we invite you to participate in our [External Tester Programme](docs/TESTER_PROGRAMME.md). Your structured feedback on installation friction, diagnostic clarity, and remediation safety directly drives our product roadmap. Submit feedback using our [Tester Feedback Issue Template](.github/ISSUE_TEMPLATE/tester_feedback.md).
+
+---
+
 ## Development Setup
 
 ### Prerequisites

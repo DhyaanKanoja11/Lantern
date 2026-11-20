@@ -161,7 +161,7 @@ Backup:
 
 ## 4. Installation
 
-### Option A: Shell Installer (Linux & macOS)
+### Option A: Shell Installer (Linux, macOS, WSL2)
 
 The fastest way to install or update Lantern:
 
@@ -172,9 +172,9 @@ curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install
 The script automatically:
 - Detects operating system and architecture (`amd64` / `arm64`).
 - Downloads the official release binary.
-- Verifies binary cryptographic integrity against `checksums.txt` (SHA-256).
+- Verifies cryptographic integrity against `checksums.txt` (SHA-256).
 - Installs to `/usr/local/bin` (or `~/.local/bin` if running without root privileges).
-- Verifies that the installation path is present in your `$PATH`.
+- Verifies whether the installation path is present in `$PATH`, detecting your shell environment (`bash`, `zsh`, `fish`) and providing exact copy-pasteable persistence commands when necessary.
 
 To install a specific version:
 ```bash
@@ -186,7 +186,56 @@ To uninstall:
 curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | bash -s -- --uninstall
 ```
 
-### Option B: Pre-Compiled Release Binaries
+### Option B: Homebrew (macOS & Linuxbrew)
+
+Install via the official tap:
+
+```bash
+brew tap DhyaanKanoja11/tap
+brew install lantern
+```
+
+To upgrade:
+```bash
+brew upgrade lantern
+```
+
+### Option C: Windows Package Managers
+
+#### Scoop
+Install via the standalone Scoop manifest:
+```powershell
+scoop install https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/packaging/scoop/lantern.json
+```
+
+#### WinGet *(Submission Pending Review)*
+Once approved in `microsoft/winget-pkgs`:
+```powershell
+winget install DhyaanKanoja11.Lantern
+```
+*(Manifest is available in [`packaging/winget/`](packaging/winget/)).*
+
+### Option D: Linux Packages (.deb, .rpm, AUR)
+
+- **Arch Linux (AUR)**:
+  ```bash
+  yay -S lantern-bin
+  ```
+  *(PKGBUILD is available in [`packaging/aur/`](packaging/aur/)).*
+
+- **Debian / Ubuntu (.deb)**:
+  Download the `.deb` archive from [Releases](https://github.com/DhyaanKanoja11/Lantern/releases) and install:
+  ```bash
+  sudo dpkg -i lantern_<version>_linux_amd64.deb
+  ```
+
+- **Fedora / RHEL (.rpm)**:
+  Download the `.rpm` archive from [Releases](https://github.com/DhyaanKanoja11/Lantern/releases) and install:
+  ```bash
+  sudo rpm -i lantern_<version>_linux_amd64.rpm
+  ```
+
+### Option E: Pre-Compiled Release Binaries
 
 Download standalone pre-compiled archives directly from the [Releases](https://github.com/DhyaanKanoja11/Lantern/releases) page:
 
@@ -203,23 +252,19 @@ Verify archive integrity:
 sha256sum --ignore-missing -c checksums.txt
 ```
 
-### Option C: Go Install (Go 1.22+)
+### Option F: Build from Source (Go 1.22+)
+
+Clone the repository and build:
 
 ```bash
-go install github.com/DhyaanKanoja11/Lantern/cmd/lantern@latest
+git clone https://github.com/DhyaanKanoja11/Lantern.git
+cd Lantern
+go install ./cmd/lantern
 ```
 
 Ensure your Go bin directory is in your `PATH`:
 ```bash
 export PATH="$(go env GOPATH)/bin:$PATH"
-```
-
-### Option D: Build from Source
-
-```bash
-git clone https://github.com/DhyaanKanoja11/Lantern.git
-cd Lantern
-go build -o lantern ./cmd/lantern
 ```
 
 ---
@@ -258,8 +303,8 @@ docker compose down
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
-| `lantern scan` | Discovers all active local TCP listening sockets and displays tabular reachability. | `lantern scan` |
-| `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. | `lantern why 5432` |
+| `lantern scan` | Discovers all active local TCP listening sockets and displays tabular reachability. Warns if Docker daemon is unreachable. | `lantern scan` |
+| `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Guides to `scan` if port omitted. | `lantern why 5432` |
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
 | `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
 | `lantern version` | Prints semantic version, commit hash, build date, and target architecture. | `lantern version` |
@@ -301,7 +346,8 @@ Lantern does not compete with network scanners or socket dumpers; it bridges the
 ### Technical Limitations
 
 - **Passive Socket Inspection**: Socket discovery relies on Linux kernel interfaces (`/proc/net/tcp`, `/proc/net/tcp6`, and `ss`). When running on macOS or Windows, invoke Lantern inside WSL2 or a Linux VM.
-- **Unprivileged Process Inspection**: When running as an unprivileged user on Linux (UID > 0), root-owned sockets (such as `docker-proxy`) cannot have their PIDs or file descriptors read directly. Lantern automatically falls back to Docker published port metadata inference, clearly tagging the attribution as `INFERRED` and restricting `lantern fix` to read-only dry-run diffs until verified with root/sudo.
+- **Unprivileged Process Inspection & Inferred Attribution**: When running as an unprivileged user on Linux (UID > 0), root-owned sockets (such as `docker-proxy`) cannot have their PIDs or file descriptors read directly from `/proc`. Lantern automatically falls back to Docker published port metadata inference, clearly tagging the attribution as `INFERRED`, rendering an explicit `ATTRIBUTION NOTICE` explaining the unverified PID in `lantern why`, and restricting `lantern fix` to read-only `--dry-run` diffs until verified with root/sudo.
+- **Docker Daemon Diagnostic Guidance**: If the Docker daemon is stopped, socket permission is denied, or the Docker CLI is not installed, `lantern scan` continues to collect and display listening host sockets while rendering actionable diagnostic notices beneath the table.
 - **Supported Remediation Scope**: `lantern fix` is strictly designed for Docker Compose configurations. It does not attempt to modify arbitrary native application configurations (e.g., PostgreSQL `postgresql.conf` or Redis `redis.conf`) where configuration syntaxes vary unpredictably.
 - **Host Networking (`--net=host`)**: Containers running in host network mode share the host network stack directly. Lantern attributes them only when PID correlation is established.
 - **Conservative Reachability**: Wildcard bindings (`0.0.0.0` or `::`) are classified as `LAN reachable` with `Internet: UNKNOWN`. Lantern never claims a service is publicly accessible over the Internet without verified external routing evidence.
