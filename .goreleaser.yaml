@@ -50,6 +50,26 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
+nfpms:
+  - id: packages
+    package_name: lantern
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    vendor: "Dhyaan Kanoja"
+    homepage: "https://github.com/DhyaanKanoja11/Lantern"
+    maintainer: "Dhyaan Kanoja <https://github.com/DhyaanKanoja11>"
+    description: "Local-first developer security tool explaining service exposure causality"
+    license: "MIT"
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    section: utils
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/lantern/copyright
+      - src: README.md
+        dst: /usr/share/doc/lantern/README.md
+
 snapshot:
   version_template: "{{ incminor .Tag }}-SNAPSHOT-{{ .ShortCommit }}"
 
