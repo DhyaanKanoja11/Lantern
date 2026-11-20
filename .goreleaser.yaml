@@ -1,0 +1,91 @@
+# GoReleaser configuration for Lantern
+# https://goreleaser.com
+version: 2
+
+project_name: lantern
+
+before:
+  hooks:
+    - go mod tidy
+    - go test -count=1 ./...
+
+builds:
+  - id: lantern
+    main: ./cmd/lantern
+    binary: lantern
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Windows ARM64 is not a primary target
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X lantern/internal/cli.Version={{ if .IsSnapshot }}{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
+      - -X lantern/internal/cli.Commit={{ .Commit }}
+      - -X lantern/internal/cli.Date={{ .Date }}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+      - SECURITY.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incminor .Tag }}-SNAPSHOT-{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: DhyaanKanoja11
+    name: Lantern
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## Lantern {{ .Tag }}
+
+    Lantern is a local-first security CLI for developers that explains configuration causality behind exposed services and provides safe, deterministic remediation.
+
+    ### Verification & Installation
+    Verify binary integrity against `checksums.txt`:
+    ```bash
+    sha256sum --ignore-missing -c checksums.txt
+    ```
+
+    Install via curl script (Linux / WSL2):
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | bash
+    ```
+  footer: |
+    ---
+    *Full Changelog: https://github.com/DhyaanKanoja11/Lantern/compare/{{ .PreviousTag }}...{{ .Tag }}*

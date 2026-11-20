@@ -59,11 +59,11 @@ func Plan(exp *domain.Exposure) *domain.Remediation {
 
 	// 5. Docker Compose published port -> Check validity for automatic remediation
 	if rc.Type == explain.RootCauseComposePublishedPort {
-		// Must have verified certainty (ROOT CAUSE, not LIKELY SOURCE)
-		if !rc.Certain {
+		// If the Compose configuration evidence itself is uncertain (e.g. ambiguous matches)
+		if exp.Config != nil && !exp.Config.Certain {
 			return &domain.Remediation{
 				Status: domain.RemediationUnsafe,
-				Reason: "Root cause is uncertain (LIKELY SOURCE). Automatic remediation requires verified certainty.",
+				Reason: "Root cause configuration is uncertain (LIKELY SOURCE). Automatic remediation requires verified certainty.",
 			}
 		}
 
@@ -113,6 +113,22 @@ func Plan(exp *domain.Exposure) *domain.Remediation {
 		}
 
 		fp := ComputeBytesFingerprint(exp.Config.File, fi.Size(), data)
+
+		// If container attribution was inferred from Docker metadata (not direct socket ownership):
+		// Diff preview is available as TENTATIVE in dry-run mode, but live modification is blocked.
+		if exp.Container != nil && exp.Container.AttributionMode == domain.AttributionInferred {
+			return &domain.Remediation{
+				Status:      domain.RemediationTentative,
+				Type:        "bind_localhost",
+				File:        exp.Config.File,
+				Line:        exp.Config.Line,
+				Service:     exp.Config.Service,
+				Before:      exp.Recommendation.Current,
+				After:       exp.Recommendation.Suggested,
+				Reason:      "Socket attribution is inferred from Docker metadata without direct process ownership proof. Live modification is blocked; dry-run preview is tentative.",
+				Fingerprint: fp,
+			}
+		}
 
 		return &domain.Remediation{
 			Status:      domain.RemediationSupported,

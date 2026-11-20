@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,11 @@ func TestDoctorCommand(t *testing.T) {
 	}
 	if !strings.Contains(out, "Network Interfaces") {
 		t.Errorf("expected Network Interfaces check in doctor output, got: %s", out)
+	}
+	if runtime.GOOS == "linux" {
+		if !strings.Contains(out, "Process Privilege Level") {
+			t.Errorf("expected Process Privilege Level check in doctor output on Linux, got: %s", out)
+		}
 	}
 }
 
@@ -61,6 +67,46 @@ func TestRunDoctorChecks(t *testing.T) {
 		if !names[expected] {
 			t.Errorf("expected check %q to be present in doctor checks", expected)
 		}
+	}
+
+	if runtime.GOOS == "linux" {
+		if !names["Process Privilege Level"] {
+			t.Errorf("expected check 'Process Privilege Level' to be present in doctor checks on Linux")
+		}
+	} else {
+		if names["Process Privilege Level"] {
+			t.Errorf("expected check 'Process Privilege Level' to be absent on non-Linux")
+		}
+	}
+}
+
+func TestDoctorLinuxPrivilegeDiagnostic(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("skipping Linux privilege diagnostic test on non-Linux platform")
+	}
+
+	checks := RunDoctorChecks(context.Background())
+	var privCheck *DoctorCheck
+	for i := range checks {
+		if checks[i].Name == "Process Privilege Level" {
+			privCheck = &checks[i]
+			break
+		}
+	}
+
+	if privCheck == nil {
+		t.Fatalf("expected 'Process Privilege Level' check to be present on Linux")
+	}
+
+	if privCheck.Status != "OK" && privCheck.Status != "WARN" {
+		t.Errorf("unexpected status %q for Process Privilege Level check", privCheck.Status)
+	}
+
+	if privCheck.Status == "OK" && !strings.Contains(privCheck.Message, "Running as root") {
+		t.Errorf("expected root message for OK status, got: %s", privCheck.Message)
+	}
+	if privCheck.Status == "WARN" && !strings.Contains(privCheck.Message, "Running as unprivileged user") {
+		t.Errorf("expected unprivileged message for WARN status, got: %s", privCheck.Message)
 	}
 }
 

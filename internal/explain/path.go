@@ -74,9 +74,13 @@ func BuildExposurePath(exp *domain.Exposure, rc ...RootCause) []PathNode {
 		if exp.Container.ID != "" {
 			detail += fmt.Sprintf(", ID: %s", exp.Container.ID)
 		}
+		containerDesc := fmt.Sprintf("Docker container: %s", cName)
+		if exp.Container.AttributionMode == domain.AttributionInferred {
+			containerDesc = fmt.Sprintf("Docker container: %s (inferred from published port)", cName)
+		}
 		nodes = append(nodes, PathNode{
 			Step:        "Container",
-			Description: fmt.Sprintf("Docker container: %s", cName),
+			Description: containerDesc,
 			Detail:      detail,
 		})
 

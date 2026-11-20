@@ -275,8 +275,8 @@ func TestCLIClient_AddressAwarePortMatching(t *testing.T) {
 		t.Errorf("expected ErrContainerNotFound for unrelated IP, got %v", err)
 	}
 
-	// Case 4: Listener specific IP (192.168.1.100) vs Docker wildcard 0.0.0.0:9000 -> matches c_wildcard
-	cWild, _, err := client.CorrelatePort(context.Background(), "192.168.1.100", 9000)
+	// Case 4: Listener wildcard (0.0.0.0) vs Docker wildcard 0.0.0.0:9000 -> matches c_wildcard
+	cWild, _, err := client.CorrelatePort(context.Background(), "0.0.0.0", 9000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -284,7 +284,19 @@ func TestCLIClient_AddressAwarePortMatching(t *testing.T) {
 		t.Errorf("expected app-wildcard for wildcard binding match, got %s", cWild.Name)
 	}
 
-	// Case 5: Unmapped port -> ErrContainerNotFound
+	// Case 5: Listener specific IP (192.168.1.100) vs Docker wildcard 0.0.0.0:9000 -> MUST NOT match (fail-closed)
+	_, _, err = client.CorrelatePort(context.Background(), "192.168.1.100", 9000)
+	if !errors.Is(err, ErrContainerNotFound) {
+		t.Errorf("expected ErrContainerNotFound for specific IP vs wildcard mapping, got %v", err)
+	}
+
+	// Case 6: Cross-family wildcard (:: vs 0.0.0.0:9000) -> MUST NOT match
+	_, _, err = client.CorrelatePort(context.Background(), "::", 9000)
+	if !errors.Is(err, ErrContainerNotFound) {
+		t.Errorf("expected ErrContainerNotFound for cross-family wildcard, got %v", err)
+	}
+
+	// Case 7: Unmapped port -> ErrContainerNotFound
 	_, _, err = client.CorrelatePort(context.Background(), "0.0.0.0", 9999)
 	if !errors.Is(err, ErrContainerNotFound) {
 		t.Errorf("expected ErrContainerNotFound, got %v", err)
@@ -337,7 +349,7 @@ func TestCLIClient_AmbiguousPortCorrelation(t *testing.T) {
 func TestCLIClient_CorrelateListener_StrictFallback(t *testing.T) {
 	mockRunner := func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		if strings.Contains(strings.Join(args, " "), "ps -q") {
-			return []byte("c_db\n"), nil
+			return []byte("c_db\nc_udp\nc_v6\nc_stopped\n"), nil
 		}
 		return []byte(`[
 			{
@@ -350,13 +362,46 @@ func TestCLIClient_CorrelateListener_StrictFallback(t *testing.T) {
 						"5432/tcp": [{"HostIp": "0.0.0.0", "HostPort": "5432"}]
 					}
 				}
+			},
+			{
+				"Id": "c_udp",
+				"Name": "/dns-container",
+				"State": {"Pid": 3000, "Running": true},
+				"Config": {"Image": "coredns:v1"},
+				"NetworkSettings": {
+					"Ports": {
+						"53/udp": [{"HostIp": "0.0.0.0", "HostPort": "53"}]
+					}
+				}
+			},
+			{
+				"Id": "c_v6",
+				"Name": "/ipv6-container",
+				"State": {"Pid": 4000, "Running": true},
+				"Config": {"Image": "ipv6app:v1"},
+				"NetworkSettings": {
+					"Ports": {
+						"8088/tcp": [{"HostIp": "::", "HostPort": "8088"}]
+					}
+				}
+			},
+			{
+				"Id": "c_stopped",
+				"Name": "/stopped-container",
+				"State": {"Pid": 0, "Running": false},
+				"Config": {"Image": "stopped:v1"},
+				"NetworkSettings": {
+					"Ports": {
+						"7000/tcp": [{"HostIp": "0.0.0.0", "HostPort": "7000"}]
+					}
+				}
 			}
 		]`), nil
 	}
 
 	client := NewCLIClientWithRunner(mockRunner)
 
-	// Scenario 1: Native process (e.g. python or node) on port 5432
+	// State 1: Native process (e.g. python or node) on port 5432
 	// MUST NOT correlate to Docker container even though container published 5432!
 	nativeListener := domain.Listener{
 		Protocol:    "tcp",
@@ -373,8 +418,8 @@ func TestCLIClient_CorrelateListener_StrictFallback(t *testing.T) {
 		t.Errorf("expected ErrContainerNotFound for native process, got %v", err)
 	}
 
-	// Scenario 2: docker-proxy on port 5432
-	// MAY correlate through port/address fallback!
+	// State 2: docker-proxy on port 5432
+	// Positive verification -> DIRECT attribution
 	proxyListener := domain.Listener{
 		Protocol:    "tcp",
 		Address:     "0.0.0.0",
@@ -389,9 +434,135 @@ func TestCLIClient_CorrelateListener_StrictFallback(t *testing.T) {
 	if c2.Name != "postgres-container" || m2.HostPort != 5432 {
 		t.Errorf("unexpected correlation for proxy: c=%+v, m=%+v", c2, m2)
 	}
+	if c2.AttributionMode != domain.AttributionDirect {
+		t.Errorf("expected AttributionDirect for docker-proxy listener, got %s", c2.AttributionMode)
+	}
 
-	// Scenario 3: Container running in host network mode where listener PID == container.HostPID
-	// Primary correlation MUST work regardless of process name!
+	// State 2 variant: Mixed-case "Docker-Proxy" with PID > 0 -> DIRECT attribution
+	mixedProxyListener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        5432,
+		PID:         9999,
+		ProcessName: "Docker-Proxy",
+	}
+	c2Mixed, _, err := client.CorrelateListener(context.Background(), mixedProxyListener)
+	if err != nil {
+		t.Fatalf("mixed-case 'Docker-Proxy' should correlate through direct attribution: %v", err)
+	}
+	if c2Mixed.AttributionMode != domain.AttributionDirect {
+		t.Errorf("expected AttributionDirect for mixed-case Docker-Proxy, got %s", c2Mixed.AttributionMode)
+	}
+
+	// State 3: Nonzero PID whose process inspection failed / unknown
+	// MUST NOT assume Docker! (Fail-closed)
+	unknownPIDListener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        5432,
+		PID:         7777,
+		ProcessName: "",
+	}
+	_, _, err = client.CorrelateListener(context.Background(), unknownPIDListener)
+	if !errors.Is(err, ErrContainerNotFound) {
+		t.Errorf("expected ErrContainerNotFound for nonzero uninspected PID, got %v", err)
+	}
+
+	// State 4: Unprivileged Linux listener (PID == 0, ProcessName == "")
+	// Root-owned docker-proxy FD unreadable by unprivileged user -> INFERRED attribution
+	unprivListener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        5432,
+		PID:         0,
+		ProcessName: "",
+	}
+	c4, m4, err := client.CorrelateListener(context.Background(), unprivListener)
+	if err != nil {
+		t.Fatalf("unprivileged listener should correlate via inference, got error: %v", err)
+	}
+	if c4.Name != "postgres-container" || m4.HostPort != 5432 {
+		t.Errorf("unexpected correlation for unprivileged listener: c=%+v, m=%+v", c4, m4)
+	}
+	if c4.AttributionMode != domain.AttributionInferred {
+		t.Errorf("expected AttributionInferred for PID 0 unprivileged listener, got %s", c4.AttributionMode)
+	}
+
+	// State 4 variant: PID == 0, ProcessName == "unknown"
+	unprivUnknownListener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        5432,
+		PID:         0,
+		ProcessName: "unknown",
+	}
+	c4b, _, err := client.CorrelateListener(context.Background(), unprivUnknownListener)
+	if err != nil {
+		t.Fatalf("unprivileged 'unknown' listener should correlate via inference, got error: %v", err)
+	}
+	if c4b.AttributionMode != domain.AttributionInferred {
+		t.Errorf("expected AttributionInferred, got %s", c4b.AttributionMode)
+	}
+
+	// State 4 variant: PID == 0, Mixed-case "Unknown" -> INFERRED attribution
+	unprivMixedUnknownListener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        5432,
+		PID:         0,
+		ProcessName: "Unknown",
+	}
+	c4c, _, err := client.CorrelateListener(context.Background(), unprivMixedUnknownListener)
+	if err != nil {
+		t.Fatalf("unprivileged mixed-case 'Unknown' listener should correlate via inference: %v", err)
+	}
+	if c4c.AttributionMode != domain.AttributionInferred {
+		t.Errorf("expected AttributionInferred for mixed-case Unknown, got %s", c4c.AttributionMode)
+	}
+
+	// State 4 variant: PID == 0, Mixed-case "DOCKER-PROXY" -> INFERRED attribution
+	unprivMixedDockerProxyListener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        5432,
+		PID:         0,
+		ProcessName: "DOCKER-PROXY",
+	}
+	c4d, _, err := client.CorrelateListener(context.Background(), unprivMixedDockerProxyListener)
+	if err != nil {
+		t.Fatalf("unprivileged mixed-case 'DOCKER-PROXY' listener should correlate via inference: %v", err)
+	}
+	if c4d.AttributionMode != domain.AttributionInferred {
+		t.Errorf("expected AttributionInferred for mixed-case DOCKER-PROXY, got %s", c4d.AttributionMode)
+	}
+
+	// State 5: PID == 0, but identified native process name -> MUST NOT correlate
+	unprivNativeListener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        5432,
+		PID:         0,
+		ProcessName: "nginx",
+	}
+	_, _, err = client.CorrelateListener(context.Background(), unprivNativeListener)
+	if !errors.Is(err, ErrContainerNotFound) {
+		t.Errorf("expected ErrContainerNotFound for identified native process with PID 0, got %v", err)
+	}
+
+	// State 5 variant: PID == 0, mixed-case identified native process name "Nginx" -> MUST NOT correlate
+	unprivMixedNativeListener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        5432,
+		PID:         0,
+		ProcessName: "Nginx",
+	}
+	_, _, err = client.CorrelateListener(context.Background(), unprivMixedNativeListener)
+	if !errors.Is(err, ErrContainerNotFound) {
+		t.Errorf("expected ErrContainerNotFound for mixed-case native process with PID 0, got %v", err)
+	}
+
+	// Primary correlation: Container running in host network mode where listener PID == container.HostPID
 	hostNetListener := domain.Listener{
 		Protocol:    "tcp",
 		Address:     "0.0.0.0",
@@ -399,21 +570,79 @@ func TestCLIClient_CorrelateListener_StrictFallback(t *testing.T) {
 		PID:         2000, // matches c_db HostPID!
 		ProcessName: "postgres",
 	}
-	c3, _, err := client.CorrelateListener(context.Background(), hostNetListener)
+	cHost, _, err := client.CorrelateListener(context.Background(), hostNetListener)
 	if err != nil {
 		t.Fatalf("primary PID correlation failed: %v", err)
 	}
-	if c3.Name != "postgres-container" {
-		t.Errorf("expected postgres-container, got %s", c3.Name)
+	if cHost.Name != "postgres-container" {
+		t.Errorf("expected postgres-container, got %s", cHost.Name)
+	}
+	if cHost.AttributionMode != domain.AttributionDirect {
+		t.Errorf("expected AttributionDirect for HostPID match, got %s", cHost.AttributionMode)
 	}
 
-	// Scenario 4: Listener with no match
+	// Protocol mismatch: TCP listener on port 53 vs UDP container mapping on port 53
+	tcpListenerOnUDPPort := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        53,
+		PID:         0,
+		ProcessName: "",
+	}
+	_, _, err = client.CorrelateListener(context.Background(), tcpListenerOnUDPPort)
+	if !errors.Is(err, ErrContainerNotFound) {
+		t.Errorf("expected ErrContainerNotFound for protocol mismatch (TCP listener vs UDP container), got %v", err)
+	}
+
+	// Cross-family wildcard mismatch: IPv4 listener 0.0.0.0 vs IPv6 mapping ::
+	crossFamilyListener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        8088,
+		PID:         0,
+		ProcessName: "",
+	}
+	_, _, err = client.CorrelateListener(context.Background(), crossFamilyListener)
+	if !errors.Is(err, ErrContainerNotFound) {
+		t.Errorf("expected ErrContainerNotFound for cross-family wildcard (0.0.0.0 vs ::), got %v", err)
+	}
+
+	// IPv6 wildcard exact match: IPv6 listener :: vs IPv6 mapping ::
+	ipv6Listener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "::",
+		Port:        8088,
+		PID:         0,
+		ProcessName: "",
+	}
+	cV6, _, err := client.CorrelateListener(context.Background(), ipv6Listener)
+	if err != nil {
+		t.Fatalf("IPv6 listener should match IPv6 mapping, got error: %v", err)
+	}
+	if cV6.Name != "ipv6-container" {
+		t.Errorf("expected ipv6-container, got %s", cV6.Name)
+	}
+
+	// Stopped container: listener on port 7000 vs stopped container
+	stoppedListener := domain.Listener{
+		Protocol:    "tcp",
+		Address:     "0.0.0.0",
+		Port:        7000,
+		PID:         0,
+		ProcessName: "",
+	}
+	_, _, err = client.CorrelateListener(context.Background(), stoppedListener)
+	if !errors.Is(err, ErrContainerNotFound) {
+		t.Errorf("expected ErrContainerNotFound for stopped container, got %v", err)
+	}
+
+	// Listener with no match
 	noMatchListener := domain.Listener{
 		Protocol:    "tcp",
 		Address:     "0.0.0.0",
 		Port:        9999,
-		PID:         7777,
-		ProcessName: "docker-proxy",
+		PID:         0,
+		ProcessName: "",
 	}
 	_, _, err = client.CorrelateListener(context.Background(), noMatchListener)
 	if !errors.Is(err, ErrContainerNotFound) {

@@ -60,6 +60,31 @@ var fixCmd = &cobra.Command{
 			fmt.Fprintln(cmd.OutOrStdout(), plan.Reason)
 			return nil
 
+		case domain.RemediationTentative:
+			fmt.Fprintln(cmd.OutOrStdout(), "Lantern Fix")
+			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintf(cmd.OutOrStdout(), "Port: %d\n", portVal)
+			if dryRunFlag {
+				fmt.Fprintln(cmd.OutOrStdout(), "[WARN] Tentative Preview (Inferred Attribution)")
+				fmt.Fprintln(cmd.OutOrStdout(), "Socket ownership could not be verified directly (unprivileged process inspection).")
+				fmt.Fprintln(cmd.OutOrStdout(), "Attribution was inferred from Docker published port metadata.")
+				fmt.Fprintln(cmd.OutOrStdout())
+				fmt.Fprintf(cmd.OutOrStdout(), "Target: %s:%d\n\n", plan.File, plan.Line)
+				fmt.Fprintf(cmd.OutOrStdout(), "Current:\n    %s\n\n", plan.Before)
+				fmt.Fprintf(cmd.OutOrStdout(), "Proposed (Tentative):\n    %s\n\n", plan.After)
+				fmt.Fprintf(cmd.OutOrStdout(), "This would modify:\n    %s\n\n", plan.File)
+				fmt.Fprintln(cmd.OutOrStdout(), "Dry-run mode: strictly read-only, no changes will be made.")
+				fmt.Fprintln(cmd.OutOrStdout(), "To enable live remediation, run as root/sudo to directly verify socket ownership.")
+				return nil
+			}
+
+			fmt.Fprintln(cmd.OutOrStdout(), "Remediation cannot be safely applied:")
+			fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", plan.Reason)
+			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintln(cmd.OutOrStdout(), "Live remediation is blocked for inferred attribution to prevent accidental file modification.")
+			fmt.Fprintf(cmd.OutOrStdout(), "Use 'lantern fix %d --dry-run' to preview the tentative diff, or run as root/sudo to verify socket ownership.\n", portVal)
+			return nil
+
 		case domain.RemediationUnsafe:
 			fmt.Fprintln(cmd.OutOrStdout(), "Lantern Fix")
 			fmt.Fprintln(cmd.OutOrStdout())

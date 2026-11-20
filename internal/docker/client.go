@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"net"
 	"os/exec"
 	"strings"
 
@@ -110,6 +111,7 @@ func (c *CLIClient) CorrelatePID(ctx context.Context, pid int) (*domain.Containe
 	for _, container := range containers {
 		if container.HostPID == pid {
 			cCopy := container
+			cCopy.AttributionMode = domain.AttributionDirect
 			var mCopy *domain.PortMapping
 			if len(cCopy.Ports) > 0 {
 				m := cCopy.Ports[0]
@@ -128,43 +130,73 @@ type candidateMatch struct {
 	score     int // 2 for exact host-IP match, 1 for wildcard match
 }
 
-// matchAddressScore scores compatibility between listener address and Docker published host IP.
-// 2 = exact match, 1 = wildcard match, 0 = no match.
-func matchAddressScore(listenerAddr, mappingIP string) int {
-	listenerAddr = strings.TrimSpace(listenerAddr)
-	mappingIP = strings.TrimSpace(mappingIP)
-
-	if listenerAddr == "" {
-		listenerAddr = "0.0.0.0"
+func normalizeIPString(addr string) string {
+	addr = strings.TrimSpace(addr)
+	addr = strings.Trim(addr, "[]")
+	if addr == "" || addr == "*" {
+		return "0.0.0.0"
 	}
-	if mappingIP == "" {
-		mappingIP = "0.0.0.0"
+	if strings.HasPrefix(strings.ToLower(addr), "::ffff:") {
+		mapped := addr[7:]
+		if net.ParseIP(mapped) != nil {
+			return mapped
+		}
 	}
-
-	// Exact host-IP match is valid
-	if listenerAddr == mappingIP {
-		return 2
-	}
-
-	// Docker wildcard host binding (0.0.0.0 or ::) may match an appropriate listener address
-	if mappingIP == "0.0.0.0" || mappingIP == "::" {
-		return 1
-	}
-
-	// If listener is wildcard and mapping is wildcard
-	if (listenerAddr == "0.0.0.0" || listenerAddr == "::") && (mappingIP == "0.0.0.0" || mappingIP == "::") {
-		return 1
-	}
-
-	// Unrelated specific host IPs must not match (e.g. 127.0.0.1 vs 192.168.1.50)
-	return 0
+	return addr
 }
 
-// CorrelatePort finds a container that published the specified host address and port.
+// matchAddressScore scores compatibility between listener address and Docker published host IP.
+// 2 = exact specific match, 1 = exact wildcard match (same family), 0 = no match or cross-family mismatch.
+func matchAddressScore(listenerAddr, mappingIP string) int {
+	listenerAddr = normalizeIPString(listenerAddr)
+	mappingIP = normalizeIPString(mappingIP)
+
+	lIP := net.ParseIP(listenerAddr)
+	mIP := net.ParseIP(mappingIP)
+
+	if lIP == nil || mIP == nil {
+		if strings.EqualFold(listenerAddr, mappingIP) {
+			return 2
+		}
+		return 0
+	}
+
+	lIsV4 := lIP.To4() != nil
+	mIsV4 := mIP.To4() != nil
+
+	// Cross-family matching (IPv4 vs IPv6 wildcard) is strictly prohibited unless verified.
+	if lIsV4 != mIsV4 {
+		return 0
+	}
+
+	// Must be equivalent IP (via net.IP.Equal)
+	if !lIP.Equal(mIP) {
+		return 0
+	}
+
+	// Wildcard match within same family (e.g. 0.0.0.0 vs 0.0.0.0 or :: vs ::)
+	if lIP.IsUnspecified() && mIP.IsUnspecified() {
+		return 1
+	}
+
+	// Specific IP match (e.g. 127.0.0.1 vs 127.0.0.1)
+	return 2
+}
+
+// CorrelatePort finds a running container that published the specified host address and port (defaults to TCP).
 // Returns ErrAmbiguousMapping if multiple containers match the same listener address and port.
 func (c *CLIClient) CorrelatePort(ctx context.Context, address string, port uint16) (*domain.Container, *domain.PortMapping, error) {
+	return c.CorrelatePortProto(ctx, "tcp", address, port)
+}
+
+// CorrelatePortProto finds a running container that published the specified protocol, host address, and port.
+// Returns ErrAmbiguousMapping if multiple running containers match the same listener criteria.
+func (c *CLIClient) CorrelatePortProto(ctx context.Context, proto, address string, port uint16) (*domain.Container, *domain.PortMapping, error) {
 	if port == 0 {
 		return nil, nil, ErrContainerNotFound
+	}
+	if proto == "" {
+		proto = "tcp"
 	}
 
 	containers, err := c.ListContainers(ctx)
@@ -174,7 +206,15 @@ func (c *CLIClient) CorrelatePort(ctx context.Context, address string, port uint
 
 	var candidates []candidateMatch
 	for _, container := range containers {
+		// Only running containers can own an active host listener socket
+		if !container.Running {
+			continue
+		}
 		for _, p := range container.Ports {
+			// Protocol validation: match protocol when declared
+			if p.Protocol != "" && !strings.EqualFold(p.Protocol, proto) {
+				continue
+			}
 			if p.HostPort == port {
 				score := matchAddressScore(address, p.HostIP)
 				if score > 0 {
@@ -219,30 +259,69 @@ func (c *CLIClient) CorrelatePort(ctx context.Context, address string, port uint
 	return &cCopy, &pCopy, nil
 }
 
-// CorrelateListener correlates a listener with a container using PID first, then published port/address fallback.
+// CorrelateListener correlates a listener with a container using the 5-state attribution engine:
+// State 1: PID > 0, identified native process (not docker-proxy) -> fail-closed (ErrContainerNotFound)
+// State 2: PID > 0, verified docker-proxy process -> DIRECT attribution via published port
+// State 3: PID > 0, uninspected/unknown process -> fail-closed (ErrContainerNotFound)
+// State 4: PID == 0, unprivileged Linux listener ("" or "unknown" or "docker-proxy") -> INFERRED attribution
+// State 5: PID == 0, identified native process -> fail-closed (ErrContainerNotFound)
 func (c *CLIClient) CorrelateListener(ctx context.Context, l domain.Listener) (*domain.Container, *domain.PortMapping, error) {
-	// 1. Primary correlation: listener PID -> Docker container Host PID
+	proto := l.Protocol
+	if proto == "" {
+		proto = "tcp"
+	}
+
+	// 1. If PID > 0:
 	if l.PID > 0 {
+		// 1A. Primary correlation: check if PID matches container HostPID (e.g. host networking or direct container PID)
 		if container, mapping, err := c.CorrelatePID(ctx, l.PID); err == nil && container != nil {
-			// If container has a port mapping matching the listener port and address, return that specific mapping
+			container.AttributionMode = domain.AttributionDirect
 			for _, p := range container.Ports {
 				if p.HostPort == l.Port && matchAddressScore(l.Address, p.HostIP) > 0 {
-					pCopy := p
-					return container, &pCopy, nil
+					if proto == "" || p.Protocol == "" || strings.EqualFold(p.Protocol, proto) {
+						pCopy := p
+						return container, &pCopy, nil
+					}
 				}
 			}
 			return container, mapping, nil
 		}
-	}
 
-	// 2. Secondary correlation: port/address fallback ONLY for docker-proxy.
-	// Port-based fallback must NOT run for arbitrary native processes (e.g. python, node, nginx).
-	if l.ProcessName != "docker-proxy" {
+		// 1B. State 2: Process positively verified as docker-proxy
+		// docker-proxy is the host process spawned by Docker daemon to forward traffic to the container.
+		if strings.EqualFold(l.ProcessName, "docker-proxy") {
+			if l.Port > 0 {
+				container, mapping, err := c.CorrelatePortProto(ctx, proto, l.Address, l.Port)
+				if err != nil {
+					return nil, nil, err
+				}
+				container.AttributionMode = domain.AttributionDirect
+				return container, mapping, nil
+			}
+			return nil, nil, ErrContainerNotFound
+		}
+
+		// 1C. State 1 & State 3: Nonzero PID that is NOT docker-proxy and does not match container HostPID.
+		// Never allow Docker fallback to override a native process, nor assume an uninspected nonzero PID is Docker.
 		return nil, nil, ErrContainerNotFound
 	}
 
+	// 2. If PID == 0:
+	// State 5: If ProcessName is an identified native process (not empty, not "unknown", not "docker-proxy"), reject.
+	if l.ProcessName != "" && !strings.EqualFold(l.ProcessName, "unknown") && !strings.EqualFold(l.ProcessName, "docker-proxy") {
+		return nil, nil, ErrContainerNotFound
+	}
+
+	// State 4: Unprivileged Linux listener (PID == 0 and ProcessName is "" or "unknown" or "docker-proxy").
+	// Sockets owned by root docker-proxy cannot have their PID/FD inspected by unprivileged users.
+	// Eligible for Docker published port inference fallback.
 	if l.Port > 0 {
-		return c.CorrelatePort(ctx, l.Address, l.Port)
+		container, mapping, err := c.CorrelatePortProto(ctx, proto, l.Address, l.Port)
+		if err != nil {
+			return nil, nil, err
+		}
+		container.AttributionMode = domain.AttributionInferred
+		return container, mapping, nil
 	}
 
 	return nil, nil, ErrContainerNotFound

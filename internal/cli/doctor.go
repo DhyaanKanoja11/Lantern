@@ -40,6 +40,23 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 		})
 	}
 
+	// 2. Process Privilege Level (Linux)
+	if runtime.GOOS == "linux" {
+		if os.Geteuid() != 0 {
+			checks = append(checks, DoctorCheck{
+				Name:    "Process Privilege Level",
+				Status:  "WARN",
+				Message: "Running as unprivileged user (UID > 0); root-owned listeners (e.g. docker-proxy) will use Docker port metadata inference. Run with sudo for direct process attribution.",
+			})
+		} else {
+			checks = append(checks, DoctorCheck{
+				Name:    "Process Privilege Level",
+				Status:  "OK",
+				Message: "Running as root (UID 0, full process and socket inspection enabled)",
+			})
+		}
+	}
+
 	// 2. Command 'ss'
 	if p, err := exec.LookPath("ss"); err == nil {
 		checks = append(checks, DoctorCheck{

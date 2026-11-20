@@ -206,7 +206,12 @@ func (a *DefaultAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, e
 		targetType := "native"
 		if container != nil && container.Name != "" {
 			containerName = container.Name
-			targetType = "Docker"
+			if container.AttributionMode == domain.AttributionInferred {
+				containerName = container.Name + " (inferred)"
+				targetType = "Docker (inferred)"
+			} else {
+				targetType = "Docker"
+			}
 		} else if proc == nil && l.PID == 0 {
 			targetType = "-"
 		}

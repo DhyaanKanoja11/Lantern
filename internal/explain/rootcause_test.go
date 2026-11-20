@@ -7,10 +7,10 @@ import (
 	"lantern/internal/domain"
 )
 
-// 1. Compose published port with matching evidence
+// 1. Compose published port with matching evidence (Direct attribution)
 func TestClassifyRootCause_ComposePublishedPort(t *testing.T) {
 	listener := domain.Listener{Protocol: "tcp", Address: "0.0.0.0", Port: 5432}
-	container := &domain.Container{ID: "c1234", Name: "postgres", Image: "postgres:15"}
+	container := &domain.Container{ID: "c1234", Name: "postgres", Image: "postgres:15", AttributionMode: domain.AttributionDirect}
 	mapping := &domain.PortMapping{HostIP: "0.0.0.0", HostPort: 5432, ContainerPort: 5432, Protocol: "tcp"}
 	config := &domain.ConfigEvidence{
 		File:          "/app/docker-compose.yml",
@@ -30,7 +30,7 @@ func TestClassifyRootCause_ComposePublishedPort(t *testing.T) {
 		t.Fatalf("expected type %s, got %s", RootCauseComposePublishedPort, rc.Type)
 	}
 	if !rc.Certain {
-		t.Errorf("expected Certain == true")
+		t.Errorf("expected Certain == true for direct container attribution")
 	}
 	if rc.File != "/app/docker-compose.yml" {
 		t.Errorf("expected file /app/docker-compose.yml, got %s", rc.File)
@@ -46,10 +46,40 @@ func TestClassifyRootCause_ComposePublishedPort(t *testing.T) {
 	}
 }
 
-// 2. Docker published port without Compose
+// 1B. Compose published port with INFERRED container attribution -> Certain MUST BE FALSE
+func TestClassifyRootCause_ComposePublishedPort_InferredAttribution(t *testing.T) {
+	listener := domain.Listener{Protocol: "tcp", Address: "0.0.0.0", Port: 5432}
+	container := &domain.Container{ID: "c1234", Name: "postgres", Image: "postgres:15", AttributionMode: domain.AttributionInferred}
+	mapping := &domain.PortMapping{HostIP: "0.0.0.0", HostPort: 5432, ContainerPort: 5432, Protocol: "tcp"}
+	config := &domain.ConfigEvidence{
+		File:          "/app/docker-compose.yml",
+		Line:          18,
+		Evidence:      "5432:5432",
+		Original:      "5432:5432",
+		Service:       "db",
+		HostPort:      5432,
+		ContainerPort: 5432,
+		Certain:       true, // Even if Compose AST was uniquely resolved, inferred container attribution prevents Certainty!
+	}
+	reach := domain.Reachability{Local: true, LAN: "yes", Internet: "unknown", State: "LAN_REACHABLE"}
+
+	rc := ClassifyRootCause(listener, nil, container, mapping, config, reach)
+
+	if rc.Type != RootCauseComposePublishedPort {
+		t.Fatalf("expected type %s, got %s", RootCauseComposePublishedPort, rc.Type)
+	}
+	if rc.Certain {
+		t.Errorf("expected Certain == false when container attribution is inferred")
+	}
+	if !strings.Contains(rc.Detail, "(inferred from published port; process ownership unverified)") {
+		t.Errorf("expected detail to indicate unverified process ownership, got: %s", rc.Detail)
+	}
+}
+
+// 2. Docker published port without Compose (Direct attribution)
 func TestClassifyRootCause_DockerPublishedPortWithoutCompose(t *testing.T) {
 	listener := domain.Listener{Protocol: "tcp", Address: "0.0.0.0", Port: 6379}
-	container := &domain.Container{ID: "c5678", Name: "redis", Image: "redis:alpine"}
+	container := &domain.Container{ID: "c5678", Name: "redis", Image: "redis:alpine", AttributionMode: domain.AttributionDirect}
 	mapping := &domain.PortMapping{HostIP: "0.0.0.0", HostPort: 6379, ContainerPort: 6379, Protocol: "tcp"}
 	reach := domain.Reachability{Local: true, LAN: "yes", Internet: "unknown", State: "LAN_REACHABLE"}
 
@@ -66,6 +96,26 @@ func TestClassifyRootCause_DockerPublishedPortWithoutCompose(t *testing.T) {
 	}
 	if !strings.Contains(rc.Description, "without Compose") {
 		t.Errorf("expected description to mention without Compose: %s", rc.Description)
+	}
+}
+
+// 2B. Docker published port without Compose (Inferred attribution -> Certain MUST BE FALSE)
+func TestClassifyRootCause_DockerPublishedPortWithoutCompose_InferredAttribution(t *testing.T) {
+	listener := domain.Listener{Protocol: "tcp", Address: "0.0.0.0", Port: 6379}
+	container := &domain.Container{ID: "c5678", Name: "redis", Image: "redis:alpine", AttributionMode: domain.AttributionInferred}
+	mapping := &domain.PortMapping{HostIP: "0.0.0.0", HostPort: 6379, ContainerPort: 6379, Protocol: "tcp"}
+	reach := domain.Reachability{Local: true, LAN: "yes", Internet: "unknown", State: "LAN_REACHABLE"}
+
+	rc := ClassifyRootCause(listener, nil, container, mapping, nil, reach)
+
+	if rc.Type != RootCauseDockerPublishedPort {
+		t.Fatalf("expected type %s, got %s", RootCauseDockerPublishedPort, rc.Type)
+	}
+	if rc.Certain {
+		t.Errorf("expected Certain == false for inferred container attribution")
+	}
+	if !strings.Contains(rc.Detail, "(inferred from published port; process ownership unverified)") {
+		t.Errorf("expected detail to mention unverified process ownership, got: %s", rc.Detail)
 	}
 }
 
@@ -208,7 +258,7 @@ func TestClassifyRootCause_NoFalseInternetClaim(t *testing.T) {
 // 10. Certain vs uncertain evidence behavior
 func TestClassifyRootCause_CertainVsUncertain(t *testing.T) {
 	listener := domain.Listener{Protocol: "tcp", Address: "0.0.0.0", Port: 5432}
-	container := &domain.Container{ID: "c1", Name: "postgres"}
+	container := &domain.Container{ID: "c1", Name: "postgres", AttributionMode: domain.AttributionDirect}
 	mapping := &domain.PortMapping{HostIP: "0.0.0.0", HostPort: 5432, ContainerPort: 5432, Protocol: "tcp"}
 	reach := domain.Reachability{Local: true, LAN: "yes", Internet: "unknown", State: "LAN_REACHABLE"}
 
@@ -480,7 +530,7 @@ func TestClassifyRootCause_PositiveControls(t *testing.T) {
 
 	// Positive Control 1: Matching 127.0.0.1 Compose declaration
 	listenerLocal := domain.Listener{Protocol: "tcp", Address: "127.0.0.1", Port: 5432}
-	container := &domain.Container{ID: "c1", Name: "postgres"}
+	container := &domain.Container{ID: "c1", Name: "postgres", AttributionMode: domain.AttributionDirect}
 	mappingLocal := &domain.PortMapping{HostIP: "127.0.0.1", HostPort: 5432, ContainerPort: 5432, Protocol: "tcp"}
 	configLocal := &domain.ConfigEvidence{
 		File:          "docker-compose.yml",

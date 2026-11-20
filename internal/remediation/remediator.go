@@ -36,6 +36,10 @@ func (r *DefaultRemediator) Apply(ctx context.Context, plan *domain.Remediation)
 		return nil, fmt.Errorf("cannot apply nil remediation plan")
 	}
 
+	if plan.Status != domain.RemediationSupported {
+		return nil, fmt.Errorf("cannot apply remediation with status %s: only SUPPORTED remediations can be applied", plan.Status)
+	}
+
 	// 1. TOCTOU Protection: Verify file fingerprint immediately before modification and before backup!
 	if plan.Fingerprint == nil {
 		return nil, fmt.Errorf("cannot apply remediation: plan has no recorded file fingerprint")

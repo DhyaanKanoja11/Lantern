@@ -81,9 +81,10 @@ func TestTextFormatter_RenderWhy_ComposeExposure(t *testing.T) {
 			Port:     5432,
 		},
 		Container: &domain.Container{
-			ID:    "c_pg",
-			Name:  "postgres",
-			Image: "postgres:15",
+			ID:              "c_pg",
+			Name:            "postgres",
+			Image:           "postgres:15",
+			AttributionMode: domain.AttributionDirect,
 		},
 		DockerMapping: &domain.PortMapping{
 			HostIP:        "0.0.0.0",
@@ -269,5 +270,68 @@ func TestTextFormatter_RenderWhy_NativeLoopback(t *testing.T) {
 	// No recommended change for already-loopback service
 	if strings.Contains(out, "RECOMMENDED CHANGE") {
 		t.Errorf("loopback service should not have RECOMMENDED CHANGE section, got:\n%s", out)
+	}
+}
+
+func TestTextFormatter_RenderWhy_InferredAttribution(t *testing.T) {
+	formatter := NewTextFormatter()
+	buf := new(bytes.Buffer)
+
+	exp := &domain.Exposure{
+		Port:        8080,
+		Protocol:    "tcp",
+		BindAddress: "0.0.0.0",
+		Listener: domain.Listener{
+			Protocol:    "tcp",
+			Address:     "0.0.0.0",
+			Port:        8080,
+			PID:         0,
+			ProcessName: "",
+		},
+		Container: &domain.Container{
+			ID:              "c_web",
+			Name:            "webapp",
+			Image:           "webapp:latest",
+			AttributionMode: domain.AttributionInferred,
+		},
+		DockerMapping: &domain.PortMapping{
+			HostIP:        "0.0.0.0",
+			HostPort:      8080,
+			ContainerPort: 80,
+			Protocol:      "tcp",
+		},
+		Config: &domain.ConfigEvidence{
+			File:          "/app/docker-compose.yml",
+			Line:          10,
+			Evidence:      "8080:80",
+			Service:       "web",
+			HostPort:      8080,
+			ContainerPort: 80,
+			Certain:       true,
+		},
+		Reachability: domain.Reachability{
+			Local:    true,
+			LAN:      "yes",
+			Internet: "unknown",
+			State:    "LAN_REACHABLE",
+		},
+	}
+
+	err := formatter.RenderWhy(buf, exp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+
+	// Inferred attribution MUST render "LIKELY SOURCE", NOT "ROOT CAUSE"
+	if !strings.Contains(out, "LIKELY SOURCE") {
+		t.Errorf("expected LIKELY SOURCE for inferred attribution, got:\n%s", out)
+	}
+	if strings.Contains(out, "ROOT CAUSE") {
+		t.Errorf("inferred attribution must NOT display ROOT CAUSE, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Docker container: webapp (inferred from published port)") {
+		t.Errorf("expected path to indicate inferred attribution, got:\n%s", out)
 	}
 }

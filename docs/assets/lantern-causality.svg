@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 480" width="1000" height="480">
+  <defs>
+    <style>
+      .bg { fill: #0d1117; }
+      .card { fill: #161b22; stroke: #30363d; stroke-width: 1.5; rx: 8; }
+      .card-accent { fill: #161b22; stroke: #58a6ff; stroke-width: 1.5; rx: 8; }
+      .title { fill: #f0f6fc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 24px; font-weight: 700; }
+      .subtitle { fill: #8b949e; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; }
+      .header-text { fill: #58a6ff; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; font-weight: 600; text-anchor: middle; }
+      .body-text { fill: #c9d1d9; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+      .body-muted { fill: #8b949e; font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; }
+      .tag-warn { fill: #d29922; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-weight: 600; }
+      .tag-success { fill: #3fb950; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-weight: 600; }
+      .arrow { stroke: #58a6ff; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .arrow-muted { stroke: #30363d; stroke-width: 1.5; stroke-dasharray: 4 4; fill: none; }
+    </style>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#58a6ff" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="480" class="bg" />
+
+  <!-- Title & Subtitle -->
+  <text x="50" y="55" class="title">LANTERN — Configuration Causality</text>
+  <text x="50" y="80" class="subtitle">Traces exposed network sockets directly to the source configuration line for safe remediation</text>
+
+  <!-- Step 1: Configuration Node -->
+  <g transform="translate(50, 115)">
+    <rect width="260" height="230" class="card" />
+    <rect width="260" height="34" fill="#21262d" rx="8" />
+    <text x="130" y="22" class="header-text">1. SOURCE CONFIGURATION</text>
+    <text x="20" y="65" class="body-text">docker-compose.yml:6</text>
+    <text x="20" y="90" class="body-muted">services:</text>
+    <text x="35" y="110" class="body-muted">db:</text>
+    <text x="50" y="130" class="body-muted">ports:</text>
+    <text x="65" y="150" class="tag-warn">- "5432:5432"  (0.0.0.0)</text>
+    <line x1="20" y1="170" x2="240" y2="170" stroke="#30363d" stroke-width="1" />
+    <text x="20" y="195" class="body-muted">Parser: YAML AST</text>
+    <text x="20" y="215" class="body-muted">Scope: Bounded directory</text>
+  </g>
+
+  <!-- Arrow 1 to 2 -->
+  <path d="M 310 230 L 360 230" class="arrow" />
+
+  <!-- Step 2: Runtime Container & Socket -->
+  <g transform="translate(370, 115)">
+    <rect width="260" height="230" class="card" />
+    <rect width="260" height="34" fill="#21262d" rx="8" />
+    <text x="130" y="22" class="header-text">2. RUNTIME ATTRIBUTION</text>
+    <text x="20" y="65" class="body-text">Container: postgres (db)</text>
+    <text x="20" y="90" class="body-muted">Host Mapping:</text>
+    <text x="35" y="110" class="body-text">0.0.0.0:5432 → 5432/tcp</text>
+    <text x="20" y="140" class="body-muted">Socket Listener (/proc, ss):</text>
+    <text x="35" y="160" class="body-text">PID 2841 (docker-proxy)</text>
+    <line x1="20" y1="175" x2="240" y2="175" stroke="#30363d" stroke-width="1" />
+    <text x="20" y="198" class="body-muted">Mode: DIRECT (PID verified)</text>
+    <text x="20" y="218" class="body-muted">Traffic: 0 bytes external</text>
+  </g>
+
+  <!-- Arrow 2 to 3 -->
+  <path d="M 630 230 L 680 230" class="arrow" />
+
+  <!-- Step 3: Network & Reachability Classification -->
+  <g transform="translate(690, 115)">
+    <rect width="260" height="230" class="card-accent" />
+    <rect width="260" height="34" fill="#1f2937" rx="8" />
+    <text x="130" y="22" class="header-text">3. REACHABILITY VERDICT</text>
+    <text x="20" y="65" class="body-muted">Active Interface:</text>
+    <text x="35" y="85" class="body-text">eth0 (192.168.1.50/24)</text>
+    <text x="20" y="115" class="body-muted">Classification:</text>
+    <text x="35" y="135" class="tag-warn">LAN reachable (YES)</text>
+    <text x="35" y="155" class="body-muted">Internet: UNKNOWN</text>
+    <line x1="20" y1="170" x2="240" y2="170" stroke="#30363d" stroke-width="1" />
+    <text x="20" y="195" class="tag-success">Verdict: ROOT CAUSE</text>
+    <text x="20" y="215" class="tag-success">Fix: 127.0.0.1:5432:5432</text>
+  </g>
+
+  <!-- Bottom Safety Pipeline Bar -->
+  <g transform="translate(50, 375)">
+    <rect width="900" height="70" class="card" />
+    <text x="25" y="28" class="header-text" text-anchor="start">10-LAYER FAIL-CLOSED REMEDIATION PIPELINE</text>
+    <text x="25" y="52" class="body-muted">TOCTOU SHA-256 Fingerprint • Byte-Verified Backup • AST-Guided Precision • Atomic Replacement • Post-Fix Verification</text>
+  </g>
+</svg>

@@ -40,8 +40,9 @@ func TestPlan_SupportedComposeWildcard(t *testing.T) {
 			Address:  "0.0.0.0",
 		},
 		Container: &domain.Container{
-			ID:   "c_pg",
-			Name: "postgres",
+			ID:              "c_pg",
+			Name:            "postgres",
+			AttributionMode: domain.AttributionDirect,
 		},
 		DockerMapping: &domain.PortMapping{
 			HostIP:        "0.0.0.0",
@@ -88,6 +89,87 @@ func TestPlan_SupportedComposeWildcard(t *testing.T) {
 	}
 	if plan.After != "127.0.0.1:5432:5432" {
 		t.Errorf("expected After '127.0.0.1:5432:5432', got %s", plan.After)
+	}
+}
+
+// 1B. Inferred container attribution produces TENTATIVE plan and blocks Apply
+func TestPlan_InferredAttribution_ProducesTentativeAndBlocksApply(t *testing.T) {
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+	composeContent := `services:
+  db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	exp := &domain.Exposure{
+		Port:        5432,
+		Protocol:    "tcp",
+		BindAddress: "0.0.0.0",
+		Listener: domain.Listener{
+			Port:     5432,
+			Protocol: "tcp",
+			Address:  "0.0.0.0",
+			PID:      0, // unprivileged
+		},
+		Container: &domain.Container{
+			ID:              "c_pg",
+			Name:            "postgres",
+			AttributionMode: domain.AttributionInferred, // Inferred attribution!
+		},
+		DockerMapping: &domain.PortMapping{
+			HostIP:        "0.0.0.0",
+			HostPort:      5432,
+			ContainerPort: 5432,
+			Protocol:      "tcp",
+		},
+		Config: &domain.ConfigEvidence{
+			File:          composePath,
+			Line:          5,
+			Evidence:      "5432:5432",
+			Service:       "db",
+			HostPort:      5432,
+			ContainerPort: 5432,
+			Certain:       true,
+		},
+		Recommendation: &domain.Recommendation{
+			Type:      "bind_localhost",
+			Current:   "5432:5432",
+			Suggested: "127.0.0.1:5432:5432",
+		},
+		Reachability: domain.Reachability{
+			Local: true,
+			LAN:   "yes",
+			State: "LAN_REACHABLE",
+		},
+	}
+
+	plan := Plan(exp)
+	if plan.Status != domain.RemediationTentative {
+		t.Fatalf("expected TENTATIVE for inferred attribution, got %s (reason: %s)", plan.Status, plan.Reason)
+	}
+	if plan.File != composePath {
+		t.Errorf("expected file %s, got %s", composePath, plan.File)
+	}
+	if plan.Before != "5432:5432" {
+		t.Errorf("expected Before '5432:5432', got %s", plan.Before)
+	}
+	if plan.After != "127.0.0.1:5432:5432" {
+		t.Errorf("expected After '127.0.0.1:5432:5432', got %s", plan.After)
+	}
+
+	// Fail-closed enforcement: Remediator.Apply MUST reject TENTATIVE plan!
+	remediator := NewDefaultRemediator()
+	_, err := remediator.Apply(context.Background(), plan)
+	if err == nil {
+		t.Fatal("expected Remediator.Apply to fail for TENTATIVE plan, but it succeeded")
+	}
+	if !strings.Contains(err.Error(), "only SUPPORTED remediations can be applied") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 
@@ -296,8 +378,9 @@ func TestPlan_ExactTargetServiceAndPort(t *testing.T) {
 			Address:  "0.0.0.0",
 		},
 		Container: &domain.Container{
-			ID:   "c_redis",
-			Name: "cache",
+			ID:              "c_redis",
+			Name:            "cache",
+			AttributionMode: domain.AttributionDirect,
 		},
 		DockerMapping: &domain.PortMapping{
 			HostIP:        "0.0.0.0",

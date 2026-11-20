@@ -6,6 +6,7 @@ We provide security updates and bug fixes for the following versions:
 
 | Version | Supported          |
 | :------ | :----------------- |
+| v0.2.x  | :white_check_mark: |
 | v0.1.x  | :white_check_mark: |
 | < v0.1  | :x:                |
 

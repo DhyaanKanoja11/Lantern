@@ -517,3 +517,181 @@ func TestFixCommand_TOCTOU_AbortsCleanly(t *testing.T) {
 		t.Errorf("expected no backup to be created on TOCTOU failure")
 	}
 }
+
+func TestFixCommand_InferredAttribution_BlocksLiveFix(t *testing.T) {
+	origAnalyzer := fixAnalyzer
+	origRemediator := fixRemediator
+	defer func() {
+		fixAnalyzer = origAnalyzer
+		fixRemediator = origRemediator
+	}()
+
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+	composeContent := "services:\n  db:\n    image: postgres:15\n    ports:\n      - \"5432:5432\"\n"
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	fixAnalyzer = &mockFixAnalyzer{
+		exposure: &domain.Exposure{
+			Port:        5432,
+			Protocol:    "tcp",
+			BindAddress: "0.0.0.0",
+			Listener: domain.Listener{
+				Port:     5432,
+				Protocol: "tcp",
+				Address:  "0.0.0.0",
+				PID:      0, // unprivileged listener
+			},
+			Container: &domain.Container{
+				ID:              "c_pg",
+				Name:            "postgres",
+				AttributionMode: domain.AttributionInferred, // Inferred attribution
+			},
+			DockerMapping: &domain.PortMapping{
+				HostIP:        "0.0.0.0",
+				HostPort:      5432,
+				ContainerPort: 5432,
+				Protocol:      "tcp",
+			},
+			Config: &domain.ConfigEvidence{
+				File:          composePath,
+				Line:          5,
+				Evidence:      "5432:5432",
+				Service:       "db",
+				HostPort:      5432,
+				ContainerPort: 5432,
+				Certain:       true,
+			},
+			Recommendation: &domain.Recommendation{
+				Type:      "bind_localhost",
+				Current:   "5432:5432",
+				Suggested: "127.0.0.1:5432:5432",
+			},
+			Reachability: domain.Reachability{
+				Local: true,
+				LAN:   "yes",
+				State: "LAN_REACHABLE",
+			},
+		},
+	}
+	fixRemediator = remediation.NewDefaultRemediator()
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetArgs([]string{"fix", "5432"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected clean exit when live fix is blocked, got error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Remediation cannot be safely applied:") {
+		t.Errorf("expected unsafe/blocked notification, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Live remediation is blocked for inferred attribution") {
+		t.Errorf("expected live remediation blocked warning, got:\n%s", out)
+	}
+	if !strings.Contains(out, "--dry-run") {
+		t.Errorf("expected dry-run suggestion, got:\n%s", out)
+	}
+
+	// Verify file was NOT modified
+	diskContent, _ := os.ReadFile(composePath)
+	if string(diskContent) != composeContent {
+		t.Errorf("file should not have been modified on blocked live fix")
+	}
+}
+
+func TestFixCommand_InferredAttribution_DryRunPreview(t *testing.T) {
+	origAnalyzer := fixAnalyzer
+	origRemediator := fixRemediator
+	defer func() {
+		fixAnalyzer = origAnalyzer
+		fixRemediator = origRemediator
+		dryRunFlag = false
+	}()
+
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+	composeContent := "services:\n  db:\n    image: postgres:15\n    ports:\n      - \"5432:5432\"\n"
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	fixAnalyzer = &mockFixAnalyzer{
+		exposure: &domain.Exposure{
+			Port:        5432,
+			Protocol:    "tcp",
+			BindAddress: "0.0.0.0",
+			Listener: domain.Listener{
+				Port:     5432,
+				Protocol: "tcp",
+				Address:  "0.0.0.0",
+				PID:      0, // unprivileged
+			},
+			Container: &domain.Container{
+				ID:              "c_pg",
+				Name:            "postgres",
+				AttributionMode: domain.AttributionInferred, // Inferred attribution
+			},
+			DockerMapping: &domain.PortMapping{
+				HostIP:        "0.0.0.0",
+				HostPort:      5432,
+				ContainerPort: 5432,
+				Protocol:      "tcp",
+			},
+			Config: &domain.ConfigEvidence{
+				File:          composePath,
+				Line:          5,
+				Evidence:      "5432:5432",
+				Service:       "db",
+				HostPort:      5432,
+				ContainerPort: 5432,
+				Certain:       true,
+			},
+			Recommendation: &domain.Recommendation{
+				Type:      "bind_localhost",
+				Current:   "5432:5432",
+				Suggested: "127.0.0.1:5432:5432",
+			},
+			Reachability: domain.Reachability{
+				Local: true,
+				LAN:   "yes",
+				State: "LAN_REACHABLE",
+			},
+		},
+	}
+	fixRemediator = remediation.NewDefaultRemediator()
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetArgs([]string{"fix", "5432", "--dry-run"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected clean exit on dry-run, got error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "[WARN] Tentative Preview (Inferred Attribution)") {
+		t.Errorf("expected tentative preview warning, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Proposed (Tentative):") {
+		t.Errorf("expected Proposed (Tentative) header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "127.0.0.1:5432:5432") {
+		t.Errorf("expected proposed fix in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Dry-run mode: strictly read-only, no changes will be made.") {
+		t.Errorf("expected read-only dry-run guarantee, got:\n%s", out)
+	}
+
+	// Verify file was NOT modified
+	diskContent, _ := os.ReadFile(composePath)
+	if string(diskContent) != composeContent {
+		t.Errorf("file should not have been modified on dry-run")
+	}
+}

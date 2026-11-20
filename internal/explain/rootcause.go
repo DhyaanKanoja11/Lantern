@@ -2,6 +2,7 @@ package explain
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"lantern/internal/domain"
@@ -68,7 +69,7 @@ func ClassifyRootCause(
 		if mapping != nil {
 			cleanHostIP = strings.Trim(strings.TrimSpace(mapping.HostIP), "[]")
 		}
-		addrCompatible := mapping != nil && (isWildcardAddress(cleanHostIP) || isWildcardAddress(cleanListenAddr) || cleanHostIP == cleanListenAddr)
+		addrCompatible := mapping != nil && isAddressCompatible(cleanListenAddr, cleanHostIP)
 
 		// Case 1A & 1B: Container has an observed published port mapping matching this listener
 		if mapping != nil && mapping.HostPort == listener.Port && addrCompatible {
@@ -90,7 +91,7 @@ func ClassifyRootCause(
 					cfgIP := strings.Trim(strings.TrimSpace(config.HostIP), "[]")
 					mapIP := strings.Trim(strings.TrimSpace(mapping.HostIP), "[]")
 
-					if cfgIP != mapIP && !(isWildcardAddress(cfgIP) && isWildcardAddress(mapIP)) {
+					if !isAddressCompatible(cfgIP, mapIP) {
 						portMatches = false
 					}
 				}
@@ -109,11 +110,17 @@ func ClassifyRootCause(
 						detail = config.Evidence
 					}
 
+					// Complete chain validation: certainty requires direct socket attribution AND valid config
+					isCertain := config.Certain && container.AttributionMode == domain.AttributionDirect
+					if container.AttributionMode == domain.AttributionInferred {
+						detail += " (inferred from published port; process ownership unverified)"
+					}
+
 					return RootCause{
 						Type:        RootCauseComposePublishedPort,
 						Description: desc,
 						Source:      source,
-						Certain:     config.Certain,
+						Certain:     isCertain,
 						File:        config.File,
 						Line:        config.Line,
 						Detail:      detail,
@@ -135,12 +142,17 @@ func ClassifyRootCause(
 			if cName == "" {
 				cName = container.ID
 			}
+			isCertain := (container.AttributionMode == domain.AttributionDirect)
+			detail := fmt.Sprintf("Container port %d published to host %s:%d (%s)", mapping.ContainerPort, mapping.HostIP, mapping.HostPort, mapping.Protocol)
+			if !isCertain {
+				detail += " (inferred from published port; process ownership unverified)"
+			}
 			return RootCause{
 				Type:        RootCauseDockerPublishedPort,
 				Description: fmt.Sprintf("Docker container %q published host port %d without Compose configuration", cName, listener.Port),
 				Source:      fmt.Sprintf("docker container %s", cName),
-				Certain:     true,
-				Detail:      fmt.Sprintf("Container port %d published to host %s:%d (%s)", mapping.ContainerPort, mapping.HostIP, mapping.HostPort, mapping.Protocol),
+				Certain:     isCertain,
+				Detail:      detail,
 			}
 		}
 
@@ -260,4 +272,36 @@ func isLoopbackAddress(addr string) bool {
 
 func isWildcardAddress(addr string) bool {
 	return addr == "0.0.0.0" || addr == "::" || addr == "*" || addr == ""
+}
+
+func isAddressCompatible(listenAddr, hostIP string) bool {
+	listenAddr = strings.Trim(strings.TrimSpace(listenAddr), "[]")
+	hostIP = strings.Trim(strings.TrimSpace(hostIP), "[]")
+
+	if listenAddr == "" || listenAddr == "*" {
+		listenAddr = "0.0.0.0"
+	}
+	if hostIP == "" || hostIP == "*" {
+		hostIP = "0.0.0.0"
+	}
+
+	lIP := net.ParseIP(listenAddr)
+	hIP := net.ParseIP(hostIP)
+
+	if lIP == nil || hIP == nil {
+		return strings.EqualFold(listenAddr, hostIP)
+	}
+
+	// Cross-family matching (IPv4 vs IPv6) is strictly prohibited unless compatible
+	if (lIP.To4() != nil) != (hIP.To4() != nil) {
+		return false
+	}
+
+	// Exact IP match
+	if lIP.Equal(hIP) {
+		return true
+	}
+
+	// Specific IP cannot match a wildcard mapping
+	return false
 }

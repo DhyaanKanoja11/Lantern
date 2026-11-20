@@ -6,6 +6,8 @@ type RemediationStatus string
 const (
 	// RemediationSupported indicates the exposure has a verified, deterministic, automatic fix.
 	RemediationSupported RemediationStatus = "SUPPORTED"
+	// RemediationTentative indicates the fix is mathematically valid but socket attribution is inferred (dry-run only).
+	RemediationTentative RemediationStatus = "TENTATIVE"
 	// RemediationUnsupported indicates automatic remediation is not supported for this exposure type.
 	RemediationUnsupported RemediationStatus = "UNSUPPORTED"
 	// RemediationUnsafe indicates evidence is uncertain, ambiguous, or the target file cannot be safely verified.

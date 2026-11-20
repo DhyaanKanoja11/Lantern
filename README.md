@@ -1,14 +1,68 @@
 # Lantern
 
-> See exactly why your development machine exposes a service — and fix it.
+> See exactly why your development machine exposes a service — and safely fix it.
 
-[![Release](https://img.shields.io/badge/release-v0.1.2-blue.svg)](https://github.com/DhyaanKanoja11/Lantern/releases)
+[![CI](https://github.com/DhyaanKanoja11/Lantern/actions/workflows/ci.yml/badge.svg)](https://github.com/DhyaanKanoja11/Lantern/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/DhyaanKanoja11/Lantern?color=blue)](https://github.com/DhyaanKanoja11/Lantern/releases)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20WSL2-lightgrey.svg)](#platform-support)
-[![Tests](https://img.shields.io/badge/tests-223%20passed-success.svg)](#testing)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20WSL2-lightgrey.svg)](#8-supported-platforms-and-limitations)
 
-Lantern is a local-first security CLI for developers. Rather than merely listing open ports, Lantern traces **configuration causality**—identifying the exact source line in your configuration, container mapping, process, and network interface that causes a service to be exposed, and providing safe, deterministic remediation.
+Lantern is a local-first security CLI for developers. Instead of merely listing listening port numbers, Lantern traces **configuration causality**: identifying the exact file and source line in your Docker Compose configuration, container mapping, process, and host network interface responsible for exposing a service, and providing safe, deterministic remediation.
+
+![Lantern Configuration Causality Architecture](docs/assets/lantern-causality.svg)
+
+---
+
+## 1. The Problem
+
+During local software development, services frequently publish ports to wildcard addresses (`0.0.0.0` or `::`) instead of loopback (`127.0.0.1`):
+
+```yaml
+# A common docker-compose.yml configuration
+services:
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432" # Binds to 0.0.0.0:5432 on all host interfaces
+```
+
+When this occurs, databases, caches, message brokers, and debug endpoints intended solely for local workstation use become reachable across the local office Wi-Fi, home network, or VPN subnet.
+
+Standard diagnostic tools like `ss`, `netstat`, or `lsof` can tell you that port 5432 is open. However, they cannot answer:
+- **Which container or process published it?**
+- **Which configuration file and source line caused it?**
+- **Is it reachable from the LAN, VPN, or only localhost?**
+- **How can I safely restrict it to localhost without breaking my configuration?**
+
+Lantern was built to solve this problem from the inside out.
+
+---
+
+## 2. Approach: Configuration Causality
+
+Lantern operates passively on your workstation without generating external network traffic:
+
+1. **Passive Socket Collection**: Discovers active TCP listening sockets directly from the operating system (`ss` and `/proc/net/tcp`).
+2. **Process & Container Attribution**: Attributes sockets to processes and Docker containers (`docker-proxy` or direct process FDs).
+3. **Causal Source-Line Resolution**: Parses Docker Compose files using YAML Abstract Syntax Tree (AST) parsing to locate the exact service declaration and line number.
+4. **Reachability Classification**: Enumerates host network interfaces (`net.Interfaces()`) to classify whether a listening socket is restricted to loopback (`127.0.0.1`), accessible to the local network (`LAN reachable`), or bound to a VPN.
+5. **Fail-Closed Remediation**: Provides `lantern fix` to restrict wildcard Docker Compose bindings to `127.0.0.1:5432:5432` with cryptographic TOCTOU checks, byte-verified backups, and atomic writes.
+
+---
+
+## 3. Terminal Demonstration
+
+### Discovery (`lantern scan`)
+
+```text
+$ lantern scan
+PORT    ADDRESS    PROCESS         CONTAINER    REACHABILITY
+5432    0.0.0.0    docker-proxy    postgres     LAN reachable
+8080    127.0.0.1  node            -            localhost only
+```
+
+### Causal Explanation (`lantern why 5432`)
 
 ```text
 $ lantern why 5432
@@ -30,7 +84,7 @@ LAN reachable
 
 ROOT CAUSE
 
-/home/user/app/docker-compose.yml:18
+/home/user/app/docker-compose.yml:6
 
     5432:5432
 
@@ -47,284 +101,265 @@ RECOMMENDED CHANGE
 Bind published port to localhost (127.0.0.1) in /home/user/app/docker-compose.yml to prevent local network exposure.
 ```
 
----
+### Safe Remediation Preview (`lantern fix 5432 --dry-run`)
 
-## Why Not `ss`, `lsof`, or `nmap`?
+```text
+$ lantern fix 5432 --dry-run
+Lantern Fix
 
-| Capability | `ss` / `lsof` / `netstat` | `nmap` | **Lantern** |
-| :--- | :---: | :---: | :---: |
-| **Inspects local listening sockets** | :white_check_mark: | :x: (remote probes) | :white_check_mark: |
-| **Correlates sockets to Docker containers** | :x: | :x: | :white_check_mark: |
-| **Pinpoints source line in Docker Compose** | :x: | :x: | :white_check_mark: (`ROOT CAUSE`) |
-| **Classifies interface reachability (LAN/VPN)** | :x: | Partial | :white_check_mark: |
-| **Zero external network traffic (passive inside-out)** | :white_check_mark: | :x: (sends packets) | :white_check_mark: |
-| **Safe, atomic 1-command remediation** | :x: | :x: | :white_check_mark: (`lantern fix`) |
+Port: 5432
+Root cause: /home/user/app/docker-compose.yml:6
 
-Existing tools answer *"Which ports are open?"* but cannot answer:
+Current:
+    5432:5432
 
-> **"Why is this service reachable, what line in which file caused it, and how do I restrict it to localhost?"**
+Proposed:
+    127.0.0.1:5432:5432
 
----
+This will modify:
+    /home/user/app/docker-compose.yml
 
-## Questions Lantern Answers
-
-- **Why is port 5432 exposed to my local network?**
-  `lantern why 5432` inspects the active socket, attributes it to its owning process or container (`docker-proxy`), and maps the listening address against your local network interfaces to explain why it is reachable.
-
-- **Which Docker Compose file or line caused this port to be exposed?**
-  Lantern inspects container labels, resolves the relevant Compose file via YAML AST parsing, and identifies the exact declaration line (e.g., `docker-compose.yml:18: 5432:5432`).
-
-- **Is this service reachable from localhost, LAN, or VPN?**
-  Lantern enumerates local network interfaces to evaluate reachability conservatively: loopback addresses (`127.0.0.1`) are classified as `localhost only`, while wildcard bindings (`0.0.0.0`) on active interfaces are classified as `LAN reachable` (with Internet exposure remaining `UNKNOWN` unless external evidence exists).
-
-- **How can I safely restrict a supported Docker Compose binding to localhost?**
-  `lantern fix 5432` generates a deterministic change to `127.0.0.1:5432:5432`. It verifies file SHA-256 fingerprints before and after writing, creates a byte-verified backup, prompts for interactive confirmation, and applies an atomic write.
-
----
-
-## Quick Start (30 Seconds)
-
-### 1. Install
-
-Requires Go 1.22+:
-
-```bash
-git clone https://github.com/DhyaanKanoja11/Lantern.git
-cd Lantern
-go install ./cmd/lantern
+Dry-run mode: no changes will be made.
+Backup that would be created: /home/user/app/docker-compose.yml.lantern.bak
 ```
 
-Ensure your Go bin directory is in your `PATH` (if not already set):
+### Applying Remediation (`lantern fix 5432`)
+
+```text
+$ lantern fix 5432
+Lantern Fix
+
+Port: 5432
+Root cause: /home/user/app/docker-compose.yml:6
+
+Current:
+    5432:5432
+
+Proposed:
+    127.0.0.1:5432:5432
+
+This will modify:
+    /home/user/app/docker-compose.yml
+
+A backup will be created before modification.
+
+Apply this change? [y/N]: y
+
+Fix applied successfully.
+
+Before:
+    5432:5432
+
+After:
+    127.0.0.1:5432:5432
+
+Backup:
+    /home/user/app/docker-compose.yml.lantern.bak
+```
+
+---
+
+## 4. Installation
+
+### Option A: Shell Installer (Linux & macOS)
+
+The fastest way to install or update Lantern:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | bash
+```
+
+The script automatically:
+- Detects operating system and architecture (`amd64` / `arm64`).
+- Downloads the official release binary.
+- Verifies binary cryptographic integrity against `checksums.txt` (SHA-256).
+- Installs to `/usr/local/bin` (or `~/.local/bin` if running without root privileges).
+- Verifies that the installation path is present in your `$PATH`.
+
+To install a specific version:
+```bash
+curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | LANTERN_VERSION=v0.2.0 bash
+```
+
+To uninstall:
+```bash
+curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | bash -s -- --uninstall
+```
+
+### Option B: Pre-Compiled Release Binaries
+
+Download standalone pre-compiled archives directly from the [Releases](https://github.com/DhyaanKanoja11/Lantern/releases) page:
+
+| Platform | Architecture | Archive |
+| :--- | :--- | :--- |
+| **Linux** | `x86_64` (AMD64) | `lantern_<version>_linux_amd64.tar.gz` |
+| **Linux** | `aarch64` (ARM64) | `lantern_<version>_linux_arm64.tar.gz` |
+| **macOS** | Apple Silicon (`arm64`) | `lantern_<version>_darwin_arm64.tar.gz` |
+| **macOS** | Intel (`amd64`) | `lantern_<version>_darwin_amd64.tar.gz` |
+| **Windows** | `x86_64` (AMD64) | `lantern_<version>_windows_amd64.zip` |
+
+Verify archive integrity:
+```bash
+sha256sum --ignore-missing -c checksums.txt
+```
+
+### Option C: Go Install (Go 1.22+)
+
+```bash
+go install github.com/DhyaanKanoja11/Lantern/cmd/lantern@latest
+```
+
+Ensure your Go bin directory is in your `PATH`:
 ```bash
 export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
-*(Alternatively, to build locally without installing: `go build -o lantern ./cmd/lantern` and invoke as `./lantern` or `../lantern` from subdirectories).*
-
-### 2. Verify Your Environment
+### Option D: Build from Source
 
 ```bash
-lantern doctor
+git clone https://github.com/DhyaanKanoja11/Lantern.git
+cd Lantern
+go build -o lantern ./cmd/lantern
 ```
 
-### 3. Try the Included Demo
+---
 
-We include an isolated, reproducible demo setup in [`examples/`](examples/):
+## 5. Quick-Start Example
+
+A self-contained demo configuration is provided in [`examples/`](examples/):
 
 ```bash
-# Start a sample database with a deliberately exposed wildcard demo port (0.0.0.0:5432)
-cd examples && docker compose up -d
+# 1. Start a demo PostgreSQL database with a wildcard port binding (0.0.0.0:5432)
+cd examples
+docker compose up -d
 
-# 1. Discover all active listening services
+# 2. Check environment prerequisites
+lantern doctor
+
+# 3. Discover exposed listening sockets
 lantern scan
 
-# 2. Trace the exact cause of exposure
+# 4. Trace why port 5432 is reachable
 lantern why 5432
 
-# 3. Preview safe remediation without modifying files (zero writes)
+# 5. Preview safe remediation without writing to disk
 lantern fix 5432 --dry-run
 
-# 4. Safely apply the fix (prompts for confirmation, creates backup, and updates YAML)
+# 6. Safely apply the fix (creates verified backup and updates docker-compose.yml)
 lantern fix 5432
 
-# Cleanup
+# 7. Teardown
 docker compose down
 ```
 
 ---
 
-## Core Commands
+## 6. Practical Command Reference
 
-### `lantern scan`
-Discovers active TCP listening sockets, attributes each listener to a process or container, classifies reachability, and renders a 5-column tabular summary.
-
-```text
-PORT    ADDRESS    PROCESS         CONTAINER    REACHABILITY
-5432    0.0.0.0    docker-proxy    postgres     LAN reachable
-8080    127.0.0.1  node            -            localhost only
-```
-
-### `lantern why <port>`
-Investigates the complete exposure path and root cause for a specific TCP port (1–65535). Renders five structured sections: `SERVICE`, `EXPOSURE PATH`, `ROOT CAUSE` (or `LIKELY SOURCE`), `REACHABILITY`, and `RECOMMENDED CHANGE`.
-
-### `lantern fix <port> [--dry-run]`
-Applies automated, safe remediation to a supported exposure. Currently supports Docker Compose wildcard port publications by restricting host bindings to `127.0.0.1`.
-
-- `--dry-run`: Performs complete analysis, previews the exact before/after change, reports the backup path that would be used, and makes zero writes.
-
-```yaml
-# Before:
-services:
-  db:
-    ports:
-      - "5432:5432"
-
-# After:
-services:
-  db:
-    ports:
-      - "127.0.0.1:5432:5432"
-```
-
-### `lantern doctor`
-Runs diagnostic probes against the runtime environment to report operational capabilities:
-- Operating system detection (Linux/WSL2 vs non-Linux).
-- `ss` utility availability.
-- `/proc` filesystem accessibility.
-- Docker CLI and daemon availability.
-- Network interface enumeration.
-- Listener collector readiness.
-
-### `lantern version`
-Prints the semantic version of the binary:
-```text
-lantern v0.1.2
-```
-
-### `lantern [command] --help`
-Displays detailed help, usage patterns, and available flags for any command.
+| Command | Description | Example |
+| :--- | :--- | :--- |
+| `lantern scan` | Discovers all active local TCP listening sockets and displays tabular reachability. | `lantern scan` |
+| `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. | `lantern why 5432` |
+| `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
+| `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
+| `lantern version` | Prints semantic version, commit hash, build date, and target architecture. | `lantern version` |
+| `lantern [command] --help` | Displays usage instructions, flag descriptions, and POSIX exit codes. | `lantern why --help` |
 
 ---
 
-## What Lantern Does & Does NOT Do
+## 7. Comparison with Existing Tools
 
-### What Lantern Does
-- **Discovers Active Listeners**: Inspects local TCP listening sockets on Linux and WSL2.
-- **Correlates Processes**: Inspects `/proc` to attribute sockets to process IDs, executable paths, and command lines.
-- **Correlates Containers**: Maps host listening sockets to Docker containers via the Docker daemon and container inspect metadata.
-- **Locates Configuration Evidence**: Parses Docker Compose files (`docker-compose.yml`, `compose.yaml`, etc.) with AST precision to find the exact source line and service responsible for port publication.
-- **Classifies Reachability**: Analyzes local network interfaces (`net.Interfaces()`) to classify exposure as `Local machine only`, `LAN reachable`, `VPN reachable`, or `Multi-interface`.
-- **Explains Root Causes**: Constructs an end-to-end causal exposure path distinguishing verified certainty (`ROOT CAUSE`) from heuristic inference (`LIKELY SOURCE`).
-- **Remediates Safely**: Interactively remedies wildcard Docker Compose exposures (`lantern fix <port>`) with cryptographic TOCTOU protection, byte-verified backups, and atomic writes.
+Lantern does not compete with network scanners or socket dumpers; it bridges the gap between low-level socket inspection and developer configuration files:
 
-### What Lantern Does NOT Do
-- **NOT a Port Scanner**: Lantern does not send SYN packets across external subnets or scan remote targets. It inspects the local machine from the inside.
-- **NOT an Nmap Replacement**: Lantern focuses on local developer workstation security and causal attribution, not network discovery.
-- **NOT a Vulnerability Scanner**: Lantern does not check CVE databases, probe application endpoints, or perform fuzzing.
-- **NOT a Silent Mutator**: Lantern never modifies firewall rules, system configurations, or source files without explicit confirmation.
-- **Does NOT Guess Configuration**: Lantern does not infer configuration files for arbitrary native processes without deterministic file evidence.
-- **Does NOT Make False Internet Claims**: A service listening on `0.0.0.0` is classified as `LAN reachable` with `Internet: UNKNOWN`. Lantern never claims a service is accessible over the public Internet without external proof.
-- **No Background Daemon or Telemetry**: Zero network calls, zero analytics, zero external dependencies.
+| Capability | `ss` / `netstat` | `lsof` | `nmap` | **Lantern** |
+| :--- | :---: | :---: | :---: | :---: |
+| **Inspects local listening sockets** | Yes | Yes | Probes remotely | **Yes** |
+| **Attributes socket to Docker container** | No | No | No | **Yes** |
+| **Pinpoints source line in Docker Compose** | No | No | No | **Yes** (`ROOT CAUSE`) |
+| **Classifies interface reachability (LAN/VPN)** | No | No | Partial | **Yes** |
+| **Zero external network traffic (passive inside-out)** | Yes | Yes | No (sends packets) | **Yes** |
+| **Deterministic, fail-closed remediation** | No | No | No | **Yes** (`lantern fix`) |
+
+- **`ss` and `netstat`** query kernel socket tables directly. They tell you *that* a socket is open on `0.0.0.0:5432`, but provide no configuration awareness.
+- **`lsof`** maps open file descriptors to process IDs, but cannot trace container published ports back to Compose definitions.
+- **`nmap`** is an active network scanner that sends network packets over the wire. It answers what an external observer sees, but cannot identify *why* your workstation configuration exposes the service.
+- **`Lantern`** inspects the system from the inside out, correlating sockets, processes, container inspect metadata, and YAML configuration files.
 
 ---
 
-## How Lantern Determines Exposure
+## 8. Supported Platforms and Limitations
 
-1. **Listener Collection**: Collects active TCP listening sockets via `ss` (or `/proc/net/tcp` and `/proc/net/tcp6`).
-2. **Process Attribution**: Reads socket inode links in `/proc/<pid>/fd/` and correlates process metadata (`comm`, `cmdline`, `stat`) from `/proc/<pid>/`.
-3. **Docker Correlation**: Inspects container network settings via the Docker API, mapping host port publish bindings (`HostIp:HostPort -> ContainerPort`) to discovered host listeners.
-4. **Compose Discovery**: Discovers relevant Compose files using bounded, evidence-driven discovery rather than unrestricted filesystem traversal. Uses YAML AST nodes (`gopkg.in/yaml.v3`) to locate the exact service declaration and 1-indexed line number.
-5. **Network Interface Classification**: Enumerates local interfaces via `net.Interfaces()`. Classifies addresses into `LOOPBACK`, `LAN` (RFC1918, RFC4193), `VPN` (tun, tap, wg, tailscale), or `OTHER`.
-6. **Reachability Evaluation**:
-   - `127.0.0.1` / `::1` -> `Local machine only` (LAN: NO, Internet: UNKNOWN).
-   - `0.0.0.0` / `::` -> `LAN reachable` (LAN: YES, Internet: UNKNOWN).
-   - Specific LAN IP -> `LAN reachable` (Local: YES, LAN: YES, Internet: UNKNOWN).
+### Operating System Support
 
----
-
-## Root Cause Model
-
-Lantern applies strict deterministic precedence to identify the root cause:
-
-1. **Docker Compose Published Port**: Accepted only when the Compose declaration strictly matches the observed runtime Docker port mapping (`HostPort`, `ContainerPort`, `HostIP`, `Protocol`, and container/service identity). Labeled `ROOT CAUSE` (`Certain: true`).
-2. **Docker Published Port (No Compose)**: When published by Docker without a matching Compose declaration. Labeled `ROOT CAUSE` if direct container correlation is established.
-3. **Native Process Wildcard Bind**: Native socket bound to `0.0.0.0` or `::`. Labeled `ROOT CAUSE` with PID/process evidence.
-4. **Native Process Loopback Bind**: Native socket bound strictly to `127.0.0.1` or `::1`. Labeled `ROOT CAUSE`.
-5. **Unresolved**: When evidence is missing, conflicting, or ambiguous. Labeled `LIKELY SOURCE` (`Certain: false`).
-
----
-
-## 10-Layer Safety Model
-
-`lantern fix` is engineered around a 10-layer safety system:
-
-1. **Read-Only by Default**: Discovery and explanation commands (`scan`, `why`, `doctor`) perform zero writes.
-2. **Explicit Confirmation**: The default response to the interactive prompt is `No` (`[y/N]`). Only an explicit affirmative response proceeds.
-3. **Dry-Run Support**: `--dry-run` performs full analysis and previews changes with zero filesystem writes.
-4. **Cryptographic TOCTOU Protection**: Computes a SHA-256 fingerprint of the configuration file during analysis. Re-verifies the fingerprint immediately before modification. If the file was edited, replaced, or deleted, Lantern aborts cleanly without touching the file.
-5. **No Automatic Replanning**: If a file changes after analysis, Lantern never silently updates or applies a stale plan; it instructs the user to re-run the command.
-6. **Byte-Verified Backup**: Creates a deterministic backup (`<file>.lantern.bak` or `<file>.lantern.bak.<N>`) and verifies byte equality before touching the original file. Existing backups are never overwritten.
-7. **AST-Guided Precision**: Targets the exact YAML AST node for the specific service and line. Unrelated services, other ports, comments, indentation, and environment variables are preserved.
-8. **AST Invariant Verification**: Verifies YAML syntax validity and re-parses with the Compose parser before writing to disk, ensuring only the target port was modified.
-9. **Atomic Replacement**: Writes modified content to a temporary file in the same directory, flushes to disk, and atomically replaces the original via `rename`.
-10. **Post-Fix Verification**: Re-reads the file from disk after writing and verifies that the configuration reflects loopback binding. If verification fails, Lantern reports the error and preserves the backup.
-
----
-
-## Platform Support
-
-| Operating System | Support Level | Behavior |
+| Platform | Support Level | Behavior |
 | :--- | :--- | :--- |
 | **Linux (kernel 3.10+)** | **Primary** | Full functionality (`scan`, `why`, `doctor`, `fix`). |
 | **WSL2** | **Primary** | Full functionality inside WSL2 Linux environments. |
-| **Windows** | **Build & Diagnostic** | Compiles cleanly. `doctor` and `version` work. `scan`, `why`, and `fix` notify that socket inspection requires Linux/WSL2. |
-| **macOS** | **Build & Diagnostic** | Compiles cleanly. Socket inspection requires Linux/WSL2. |
+| **macOS** | **Diagnostic** | Compiles cleanly. `doctor` and `version` work. Native socket inspection requires Linux/WSL2. |
+| **Windows** | **Diagnostic** | Compiles cleanly. `doctor` and `version` work. Native socket inspection requires Linux/WSL2. |
+
+### Technical Limitations
+
+- **Passive Socket Inspection**: Socket discovery relies on Linux kernel interfaces (`/proc/net/tcp`, `/proc/net/tcp6`, and `ss`). When running on macOS or Windows, invoke Lantern inside WSL2 or a Linux VM.
+- **Unprivileged Process Inspection**: When running as an unprivileged user on Linux (UID > 0), root-owned sockets (such as `docker-proxy`) cannot have their PIDs or file descriptors read directly. Lantern automatically falls back to Docker published port metadata inference, clearly tagging the attribution as `INFERRED` and restricting `lantern fix` to read-only dry-run diffs until verified with root/sudo.
+- **Supported Remediation Scope**: `lantern fix` is strictly designed for Docker Compose configurations. It does not attempt to modify arbitrary native application configurations (e.g., PostgreSQL `postgresql.conf` or Redis `redis.conf`) where configuration syntaxes vary unpredictably.
+- **Host Networking (`--net=host`)**: Containers running in host network mode share the host network stack directly. Lantern attributes them only when PID correlation is established.
+- **Conservative Reachability**: Wildcard bindings (`0.0.0.0` or `::`) are classified as `LAN reachable` with `Internet: UNKNOWN`. Lantern never claims a service is publicly accessible over the Internet without verified external routing evidence.
 
 ---
 
-## Limitations
+## 9. Security and Safety Model
 
-- **Linux-Specific Listener Discovery**: Native socket inspection directly parses Linux `/proc/net/tcp` and `ss` output. On macOS and Windows, running inside a WSL2 or Linux VM is required.
-- **Docker CLI Dependency**: Correlating published ports to containers relies on the Docker CLI and daemon being accessible.
-- **Rootless / Host Networking**: Containers using `--net=host` share the host network stack; Lantern attributes them to the container only when PID correlation is established.
-- **Native Process Configuration**: Automatic remediation is not supported for arbitrary native processes because application configuration formats vary widely.
-- **Standalone Containers**: Containers created via raw `docker run` without a Compose file cannot be remediated via Compose editing.
-- **Docker Desktop with WSL2 Networking**: When running Docker Desktop on Windows with the WSL2 backend, published container ports may be forwarded through a virtualized networking layer (or utility distribution) that is not directly visible as a host listening socket or process inside the user's WSL2 distribution. This networking indirection can prevent deterministic listener-to-container attribution. Consistent with Lantern's conservative reachability model, Lantern does not claim that such ports are Internet-exposed and maintains its standard conservative semantics (treating external reachability as UNKNOWN without direct evidence).
-- **Conservative Reachability**: Lantern never claims public Internet exposure without external verification. Wildcard bindings are classified as `LAN reachable` with `Internet: UNKNOWN`.
+The remediation engine (`lantern fix`) is built around a **10-layer fail-closed safety pipeline**:
+
+1. **Read-Only by Default**: Discovery and diagnostic commands (`scan`, `why`, `doctor`, `version`) never write to disk or mutate system state.
+2. **Explicit Confirmation**: The interactive prompt defaults to `No` (`[y/N]`). Remediation requires an explicit affirmative answer (`y` or `yes`).
+3. **Dry-Run Inspection**: `--dry-run` performs full causal analysis and renders the before/after modification without creating temporary files or backups.
+4. **Cryptographic TOCTOU Protection**: Computes a SHA-256 fingerprint of the configuration file during analysis and re-verifies it immediately before writing. If the file was modified, moved, or deleted by another process, Lantern aborts cleanly.
+5. **No Automatic Replanning**: If file modification is detected, Lantern never attempts to guess or re-apply a stale plan; it halts and requests that you re-run the command.
+6. **Byte-Verified Backup**: Generates a sequenced backup (`docker-compose.yml.lantern.bak`) and verifies byte equality against the original before touching the target file. Existing backups are never overwritten.
+7. **YAML AST Precision**: Targets the exact YAML AST node corresponding to the exposed port. Comments, indentation, unrelated services, and environment variables are preserved intact.
+8. **AST Invariant Verification**: Validates the modified YAML structure in memory before writing to disk, ensuring that syntax remains valid and only the intended port publication was modified.
+9. **Atomic Replacement**: Writes changes to a temporary file in the target directory, calls `sync` to flush data to disk, and replaces the target file via atomic filesystem `rename`.
+10. **Post-Fix Verification**: Re-reads the modified file from disk after writing and re-parses it with the Compose parser to verify that the port is bound to `127.0.0.1`. If verification fails, the original backup is preserved and the error is reported.
+
+**Privacy Guarantee**: Lantern performs zero external network telemetry, zero analytics tracking, and runs no background daemons.
 
 ---
 
-## Architecture & Codebase
+## 10. Architecture & Development
 
-For an in-depth explanation of Lantern's internal layering, package boundaries, data flows, and design decisions, see:
+For an in-depth explanation of Lantern's internal layering, package boundaries, data flows, and design decisions:
 
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — Architectural principles and data pipeline.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — Guidelines for local development and pull requests.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — Layered architecture, domain purity, and data pipeline.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — Local development workflow, code style, and PR guidelines.
 - [`SECURITY.md`](SECURITY.md) — Security policy and vulnerability disclosure procedures.
+- [`CHANGELOG.md`](CHANGELOG.md) — Version history and release notes.
 
----
+### Verification Suite
 
-## Development & Testing
+All contributions must pass the verification suite:
 
-### Building
 ```bash
-go build ./cmd/lantern
-```
+# Run unit and hermetic integration tests
+go test -count=1 ./...
 
-### Linux Cross-Compilation
-```bash
+# Run race condition detector
+go test -race ./...
+
+# Run static analysis and formatting checks
+go vet ./...
+gofmt -s -l .
+
+# Multi-platform compilation check
 GOOS=linux GOARCH=amd64 go build ./cmd/lantern
 GOOS=linux GOARCH=arm64 go build ./cmd/lantern
-```
-
-### Testing
-Run unit and integration test suites:
-```bash
-go test -count=1 -v ./...
-```
-
-Run race condition detection:
-```bash
-go test -race ./...
-```
-
-Verify formatting and linting:
-```bash
-gofmt -s -l .
-go vet ./...
+GOOS=windows GOARCH=amd64 go build ./cmd/lantern
+GOOS=darwin GOARCH=arm64 go build ./cmd/lantern
 ```
 
 ---
 
-## Roadmap
+## 11. License
 
-- **v0.2**: Machine-readable JSON output (`--json`) for CI/CD and automation pipelines.
-- **v0.3**: Continuous exposure watch mode (`lantern watch`) with file and socket diffing.
-- **v0.4**: Security policy engine and compliance rule evaluation.
-- **v0.5**: Native configuration parsers for popular developer servers (PostgreSQL, Redis, Vite).
-
----
-
-## License
-
-MIT License. See [LICENSE](LICENSE) for details.
+Lantern is licensed under the [MIT License](LICENSE).

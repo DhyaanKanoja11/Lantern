@@ -18,9 +18,10 @@ func TestExplain_ComposeExposure(t *testing.T) {
 			Port:     5432,
 		},
 		Container: &domain.Container{
-			ID:    "c_pg",
-			Name:  "postgres",
-			Image: "postgres:15-alpine",
+			ID:              "c_pg",
+			Name:            "postgres",
+			Image:           "postgres:15-alpine",
+			AttributionMode: domain.AttributionDirect,
 		},
 		DockerMapping: &domain.PortMapping{
 			HostIP:        "0.0.0.0",
@@ -104,9 +105,10 @@ func TestExplain_DockerWithoutCompose(t *testing.T) {
 			Port:     6379,
 		},
 		Container: &domain.Container{
-			ID:    "c_redis",
-			Name:  "my-redis",
-			Image: "redis:latest",
+			ID:              "c_redis",
+			Name:            "my-redis",
+			Image:           "redis:latest",
+			AttributionMode: domain.AttributionDirect,
 		},
 		DockerMapping: &domain.PortMapping{
 			HostIP:        "0.0.0.0",
@@ -335,5 +337,63 @@ func TestBuildExposurePath_RejectedComposeDisappears(t *testing.T) {
 	}
 	if !strings.Contains(pathTree, "Docker container: postgres") {
 		t.Errorf("expected Docker container node in path tree:\n%s", pathTree)
+	}
+}
+
+func TestExplain_InferredDockerAttribution(t *testing.T) {
+	exp := &domain.Exposure{
+		Port:        8080,
+		Protocol:    "tcp",
+		BindAddress: "0.0.0.0",
+		Listener: domain.Listener{
+			Protocol:    "tcp",
+			Address:     "0.0.0.0",
+			Port:        8080,
+			PID:         0,
+			ProcessName: "",
+		},
+		Container: &domain.Container{
+			ID:              "c_webapp",
+			Name:            "webapp",
+			Image:           "webapp:v1",
+			AttributionMode: domain.AttributionInferred,
+		},
+		DockerMapping: &domain.PortMapping{
+			HostIP:        "0.0.0.0",
+			HostPort:      8080,
+			ContainerPort: 80,
+			Protocol:      "tcp",
+		},
+		Config: &domain.ConfigEvidence{
+			File:          "/app/docker-compose.yml",
+			Line:          10,
+			Evidence:      "8080:80",
+			Service:       "web",
+			HostPort:      8080,
+			ContainerPort: 80,
+			Certain:       true,
+		},
+		Reachability: domain.Reachability{
+			Local:    true,
+			LAN:      "yes",
+			Internet: "unknown",
+			State:    "LAN_REACHABLE",
+		},
+	}
+
+	expl := Explain(exp)
+
+	// Certainty MUST be false for inferred attribution
+	if expl.RootCause.Certain {
+		t.Errorf("expected Certain == false for inferred container attribution")
+	}
+	if !strings.Contains(expl.RootCause.Detail, "(inferred from published port; process ownership unverified)") {
+		t.Errorf("expected detail to mention unverified process ownership, got: %s", expl.RootCause.Detail)
+	}
+
+	// Exposure path must display (inferred from published port)
+	pathTree := FormatPath(exp, expl.RootCause)
+	if !strings.Contains(pathTree, "Docker container: webapp (inferred from published port)") {
+		t.Errorf("expected path to indicate inferred attribution, got:\n%s", pathTree)
 	}
 }
