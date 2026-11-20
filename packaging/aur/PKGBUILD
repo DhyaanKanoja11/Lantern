@@ -1,0 +1,24 @@
+# Maintainer: Dhyaan Kanoja <https://github.com/DhyaanKanoja11>
+pkgname=lantern-bin
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="Local-first developer security tool explaining configuration causality behind exposed services"
+arch=('x86_64' 'aarch64')
+url="https://github.com/DhyaanKanoja11/Lantern"
+license=('MIT')
+depends=('iproute2')
+optdepends=('docker: for container and Compose correlation')
+provides=('lantern')
+conflicts=('lantern')
+
+source_x86_64=("https://github.com/DhyaanKanoja11/Lantern/releases/download/v${pkgver}/lantern_${pkgver}_linux_amd64.tar.gz")
+sha256sums_x86_64=('3520b2833f13619d5b5435fe7bb2b857e63c98e0fe2bdb91e404b8a7a01ad18d')
+
+source_aarch64=("https://github.com/DhyaanKanoja11/Lantern/releases/download/v${pkgver}/lantern_${pkgver}_linux_arm64.tar.gz")
+sha256sums_aarch64=('c32dbb1a2de8bd4a76ec1dea52cd83141f25a96566ca2f273cedd93d90eb1275')
+
+package() {
+    install -Dm755 "${srcdir}/lantern" "${pkgdir}/usr/bin/lantern"
+    install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    install -Dm644 "${srcdir}/README.md" "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}

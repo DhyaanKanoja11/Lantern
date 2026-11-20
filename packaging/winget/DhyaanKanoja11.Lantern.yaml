@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
+PackageIdentifier: DhyaanKanoja11.Lantern
+PackageVersion: 0.2.0
+PackageName: Lantern
+Publisher: Dhyaan Kanoja
+PublisherUrl: https://github.com/DhyaanKanoja11
+Author: Dhyaan Kanoja
+Moniker: lantern
+ShortDescription: Local-first developer security tool explaining service reachability causality.
+Description: Lantern is a local-first developer security CLI that explains configuration causality behind exposed services, tracing host listening sockets back to Docker Compose definitions with safe, deterministic remediation.
+License: MIT
+LicenseUrl: https://github.com/DhyaanKanoja11/Lantern/blob/main/LICENSE
+PackageUrl: https://github.com/DhyaanKanoja11/Lantern
+Tags:
+  - docker
+  - docker-compose
+  - security
+  - devops
+  - ports
+  - networking
+  - cli
+ReleaseDate: 2026-11-20
+Installers:
+  - Architecture: x64
+    InstallerType: zip
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: lantern.exe
+        PortableCommandAlias: lantern
+    InstallerUrl: https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.2.0/lantern_0.2.0_windows_amd64.zip
+    InstallerSha256: ca16d2cc45593437e244c6ddbd7c775853407456006944f15253661a5a31fd71
+ManifestType: singleton
+ManifestVersion: 1.6.0
