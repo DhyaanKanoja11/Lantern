@@ -315,12 +315,31 @@ docker compose down
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
-| `lantern scan` | Discovers all active local TCP listening sockets and displays tabular reachability. Warns if Docker daemon is unreachable. | `lantern scan` |
+| `lantern scan` | Discovers all active local TCP listening sockets and displays tabular reachability. Supports CI enforcement via `--fail-on-wildcard` and `--ignore-ports`. | `lantern scan --fail-on-wildcard --ignore-ports 80,443` |
 | `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Guides to `scan` if port omitted. | `lantern why 5432` |
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
 | `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
 | `lantern version` | Prints semantic version, commit hash, build date, and target architecture. | `lantern version` |
 | `lantern [command] --help` | Displays usage instructions, flag descriptions, and POSIX exit codes. | `lantern why --help` |
+
+### CI/CD Security Guardrails
+
+Prevent accidental wildcard bindings (`0.0.0.0` or `::`) from reaching production by running Lantern in CI:
+
+```yaml
+- name: Audit Port Exposures
+  uses: DhyaanKanoja11/lantern-action@v1
+  with:
+    fail-on-wildcard: 'true'
+    ignore-ports: '80,443'
+```
+
+Or run directly via CLI:
+```bash
+lantern scan --fail-on-wildcard --ignore-ports 80,443
+```
+
+When run inside GitHub Actions (`GITHUB_ACTIONS=true`), Lantern automatically emits native [error annotations](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions) directly on the pull request diff and exits with a non-zero code to block insecure configurations.
 
 ---
 
