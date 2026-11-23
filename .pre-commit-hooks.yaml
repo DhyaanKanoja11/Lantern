@@ -1,0 +1,7 @@
+- id: lantern-scan
+  name: Lantern Port Exposure Audit
+  description: Scan local network listeners and Docker containers for unintentional wildcard port bindings (0.0.0.0)
+  entry: lantern scan
+  language: system
+  pass_filenames: false
+  always_run: true

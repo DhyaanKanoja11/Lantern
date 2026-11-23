@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -66,23 +67,83 @@ func runScanOnce(ctx context.Context, cmd *cobra.Command, analyzer exposure.Anal
 		return err
 	}
 
-	if failOnWildcard {
-		if violations := evaluateWildcardViolations(report.Summaries, ignorePorts); len(violations) > 0 {
-			isCI := os.Getenv("GITHUB_ACTIONS") == "true"
-			for _, v := range violations {
-				name := v.ProcessName
-				if v.ContainerName != "" {
-					name = fmt.Sprintf("%s (container: %s)", v.ProcessName, v.ContainerName)
-				}
-				if isCI {
-					fmt.Fprintf(cmd.ErrOrStderr(), "::error title=Wildcard Port Exposure::Port %d (%s) is bound to wildcard address %s\n", v.Port, name, v.Address)
-				}
+	violations := evaluateWildcardViolations(report.Summaries, ignorePorts)
+	if os.Getenv("GITHUB_STEP_SUMMARY") != "" {
+		writeGitHubStepSummary(report.Summaries, violations, ignorePorts)
+	}
+
+	if failOnWildcard && len(violations) > 0 {
+		isCI := os.Getenv("GITHUB_ACTIONS") == "true"
+		for _, v := range violations {
+			name := v.ProcessName
+			if v.ContainerName != "" {
+				name = fmt.Sprintf("%s (container: %s)", v.ProcessName, v.ContainerName)
 			}
-			return fmt.Errorf("wildcard port exposure policy violation: %d service(s) bound to wildcard address (0.0.0.0 or ::)", len(violations))
+			if isCI {
+				fmt.Fprintf(cmd.ErrOrStderr(), "::error title=Wildcard Port Exposure::Port %d (%s) is bound to wildcard address %s\n", v.Port, name, v.Address)
+			}
 		}
+		return fmt.Errorf("wildcard port exposure policy violation: %d service(s) bound to wildcard address (0.0.0.0 or ::)", len(violations))
 	}
 
 	return nil
+}
+
+func writeGitHubStepSummary(summaries []domain.ExposureSummary, violations []domain.ExposureSummary, ignorePorts []int) {
+	summaryPath := os.Getenv("GITHUB_STEP_SUMMARY")
+	if summaryPath == "" {
+		return
+	}
+
+	ignoredMap := make(map[uint16]bool, len(ignorePorts))
+	for _, p := range ignorePorts {
+		if p > 0 && p <= 65535 {
+			ignoredMap[uint16(p)] = true
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("### 🛡️ Lantern Port Exposure Report\n\n")
+
+	if len(summaries) == 0 {
+		sb.WriteString("No active listening TCP sockets detected.\n")
+	} else {
+		sb.WriteString("| Port | Proto | Bind Address | Service / Container | Reachability | Status |\n")
+		sb.WriteString("| :---: | :---: | :---: | :--- | :--- | :---: |\n")
+		for _, s := range summaries {
+			target := s.ProcessName
+			if s.ContainerName != "" {
+				target = fmt.Sprintf("%s (`%s`)", s.ProcessName, s.ContainerName)
+			}
+			if target == "" {
+				target = "-"
+			}
+
+			status := "✅ Clean"
+			if isWildcardAddress(s.Address) {
+				if ignoredMap[s.Port] {
+					status = "⚪ *Whitelisted*"
+				} else {
+					status = "❌ **Violation**"
+				}
+			}
+
+			sb.WriteString(fmt.Sprintf("| `%d` | %s | `%s` | %s | %s | %s |\n",
+				s.Port, s.Protocol, s.Address, target, s.Reachability, status))
+		}
+	}
+
+	if len(violations) > 0 {
+		sb.WriteString(fmt.Sprintf("\n> ⚠️ **%d wildcard exposure policy violation(s) detected.** Run `lantern why <port>` or `lantern fix <port>` to remediate.\n", len(violations)))
+	} else {
+		sb.WriteString("\n> ✅ All active network listeners comply with security policy.\n")
+	}
+
+	f, err := os.OpenFile(summaryPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err == nil {
+		defer f.Close()
+		f.WriteString(sb.String())
+	}
 }
 
 func runScanWatch(ctx context.Context, cmd *cobra.Command, analyzer exposure.Analyzer, formatter *output.TextFormatter, interval time.Duration, failOnWildcard bool, ignorePorts []int) error {

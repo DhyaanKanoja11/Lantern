@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,5 +146,46 @@ func TestRunScanWatch_ContextCancellation(t *testing.T) {
 
 	if !bytes.Contains(outBuf.Bytes(), []byte("Lantern Watch Mode")) {
 		t.Errorf("expected output to contain watch mode header, got: %s", outBuf.String())
+	}
+}
+
+func TestWriteGitHubStepSummary(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "lantern_step_summary_*.md")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	t.Setenv("GITHUB_STEP_SUMMARY", tmpFile.Name())
+
+	summaries := []domain.ExposureSummary{
+		{Port: 80, Protocol: "tcp", Address: "0.0.0.0", ProcessName: "nginx", Reachability: "Wildcard"},
+		{Port: 5432, Protocol: "tcp", Address: "0.0.0.0", ProcessName: "postgres", ContainerName: "pg_db", Reachability: "Wildcard"},
+		{Port: 6379, Protocol: "tcp", Address: "127.0.0.1", ProcessName: "redis", Reachability: "localhost only"},
+	}
+	violations := []domain.ExposureSummary{
+		summaries[1],
+	}
+
+	writeGitHubStepSummary(summaries, violations, []int{80})
+
+	data, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("failed to read step summary: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "Lantern Port Exposure Report") {
+		t.Errorf("expected header in summary, got: %s", content)
+	}
+	if !strings.Contains(content, "| `5432` |") || !strings.Contains(content, "❌ **Violation**") {
+		t.Errorf("expected violation entry for port 5432, got: %s", content)
+	}
+	if !strings.Contains(content, "| `80` |") || !strings.Contains(content, "⚪ *Whitelisted*") {
+		t.Errorf("expected whitelisted entry for port 80, got: %s", content)
+	}
+	if !strings.Contains(content, "| `6379` |") || !strings.Contains(content, "✅ Clean") {
+		t.Errorf("expected clean entry for port 6379, got: %s", content)
 	}
 }

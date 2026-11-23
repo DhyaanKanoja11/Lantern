@@ -356,6 +356,21 @@ policy:
 
 When `.lantern.yaml` is present, `lantern scan` automatically applies the policy in local development and CI without requiring long CLI flags.
 
+### Pre-Commit Hook Integration
+
+Automatically audit active ports and prevent committing insecure configurations with [pre-commit](https://pre-commit.com/):
+
+Add to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/DhyaanKanoja11/Lantern
+    rev: v0.2.1
+    hooks:
+      - id: lantern-scan
+        args: ["--fail-on-wildcard", "--ignore-ports", "80,443"]
+```
+
 ### Live Terminal Watch Mode
 
 Continuously monitor network listeners and container ports as you start and stop development services:
