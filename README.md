@@ -4,6 +4,7 @@
 
 [![CI](https://github.com/DhyaanKanoja11/Lantern/actions/workflows/ci.yml/badge.svg)](https://github.com/DhyaanKanoja11/Lantern/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/DhyaanKanoja11/Lantern?color=blue)](https://github.com/DhyaanKanoja11/Lantern/releases)
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Lantern%20Action-blue.svg?logo=github)](https://github.com/marketplace/actions/lantern-security-scan)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20WSL2-lightgrey.svg)](#8-supported-platforms-and-limitations)
@@ -324,7 +325,7 @@ docker compose down
 
 ### CI/CD Security Guardrails
 
-Prevent accidental wildcard bindings (`0.0.0.0` or `::`) from reaching production by running Lantern in CI:
+Prevent accidental wildcard bindings (`0.0.0.0` or `::`) from reaching production by running Lantern in CI using the official [GitHub Marketplace Action](https://github.com/marketplace/actions/lantern-security-scan):
 
 ```yaml
 - name: Audit Port Exposures
