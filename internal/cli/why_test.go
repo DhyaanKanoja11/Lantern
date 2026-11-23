@@ -90,3 +90,20 @@ func TestWhyCommand_NoListener(t *testing.T) {
 		}
 	}
 }
+
+func TestWhyCommand_FormatFlags(t *testing.T) {
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+
+	// Test invalid format flag
+	rootCmd.SetArgs([]string{"why", "5432", "--format", "invalid_fmt"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for invalid format, got nil")
+	}
+	if !strings.Contains(err.Error(), "unsupported output format") {
+		t.Errorf("expected unsupported format error, got: %v", err)
+	}
+}

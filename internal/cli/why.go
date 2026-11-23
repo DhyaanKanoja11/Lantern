@@ -4,10 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/DhyaanKanoja11/Lantern/internal/exposure"
 	"github.com/DhyaanKanoja11/Lantern/internal/output"
 	"github.com/spf13/cobra"
+)
+
+var (
+	whyFormat string
+	whyJSON   bool
 )
 
 var whyCmd = &cobra.Command{
@@ -31,6 +37,23 @@ var whyCmd = &cobra.Command{
 			return fmt.Errorf("invalid port number %d: port must be between 1 and 65535", portVal)
 		}
 
+		format := strings.ToLower(whyFormat)
+		if whyJSON {
+			format = "json"
+		}
+
+		var formatter output.Formatter
+		switch format {
+		case "text", "":
+			formatter = output.NewTextFormatter()
+		case "json":
+			formatter = output.NewJSONFormatter()
+		case "sarif":
+			formatter = output.NewSarifFormatter(Version)
+		default:
+			return fmt.Errorf("unsupported output format %q: must be one of text, json, sarif", whyFormat)
+		}
+
 		analyzer := exposure.NewDefaultAnalyzer()
 		exp, err := analyzer.Why(cmd.Context(), uint16(portVal), ".")
 		if err != nil {
@@ -41,7 +64,11 @@ var whyCmd = &cobra.Command{
 			return err
 		}
 
-		formatter := output.NewTextFormatter()
 		return formatter.RenderWhy(cmd.OutOrStdout(), exp)
 	},
+}
+
+func init() {
+	whyCmd.Flags().StringVarP(&whyFormat, "format", "f", "text", "Output format: text, json, sarif")
+	whyCmd.Flags().BoolVar(&whyJSON, "json", false, "Output result as JSON (alias for --format json)")
 }

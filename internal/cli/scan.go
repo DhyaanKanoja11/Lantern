@@ -22,6 +22,8 @@ var (
 	scanWatch          bool
 	scanInterval       time.Duration
 	scanConfigFile     string
+	scanFormat         string
+	scanJSON           bool
 )
 
 var scanCmd = &cobra.Command{
@@ -47,17 +49,36 @@ var scanCmd = &cobra.Command{
 		effectiveFail, effectiveIgnore := cfg.MergeWithFlags(scanFailOnWildcard, flagFailChanged, scanIgnorePorts)
 
 		analyzer := exposure.NewDefaultAnalyzer()
-		formatter := output.NewTextFormatter()
+		format := strings.ToLower(scanFormat)
+		if scanJSON {
+			format = "json"
+		}
+
+		var formatter output.Formatter
+		switch format {
+		case "text", "":
+			formatter = output.NewTextFormatter()
+		case "json":
+			formatter = output.NewJSONFormatter()
+		case "sarif":
+			formatter = output.NewSarifFormatter(Version)
+		default:
+			return fmt.Errorf("unsupported output format %q: must be one of text, json, sarif", scanFormat)
+		}
 
 		if scanWatch {
-			return runScanWatch(cmd.Context(), cmd, analyzer, formatter, scanInterval, effectiveFail, effectiveIgnore)
+			textFormatter, ok := formatter.(*output.TextFormatter)
+			if !ok {
+				textFormatter = output.NewTextFormatter()
+			}
+			return runScanWatch(cmd.Context(), cmd, analyzer, textFormatter, scanInterval, effectiveFail, effectiveIgnore)
 		}
 
 		return runScanOnce(cmd.Context(), cmd, analyzer, formatter, effectiveFail, effectiveIgnore)
 	},
 }
 
-func runScanOnce(ctx context.Context, cmd *cobra.Command, analyzer exposure.Analyzer, formatter *output.TextFormatter, failOnWildcard bool, ignorePorts []int) error {
+func runScanOnce(ctx context.Context, cmd *cobra.Command, analyzer exposure.Analyzer, formatter output.Formatter, failOnWildcard bool, ignorePorts []int) error {
 	report, err := analyzer.ScanReport(ctx)
 	if err != nil {
 		return err
@@ -220,6 +241,8 @@ func init() {
 	scanCmd.Flags().BoolVarP(&scanWatch, "watch", "w", false, "Continuously monitor and refresh active network listeners")
 	scanCmd.Flags().DurationVar(&scanInterval, "interval", 2*time.Second, "Refresh interval in watch mode (e.g. 2s, 5s)")
 	scanCmd.Flags().StringVarP(&scanConfigFile, "config", "c", "", "Path to .lantern.yaml policy configuration file")
+	scanCmd.Flags().StringVarP(&scanFormat, "format", "f", "text", "Output format: text, json, sarif")
+	scanCmd.Flags().BoolVar(&scanJSON, "json", false, "Output results as JSON (alias for --format json)")
 }
 
 func evaluateWildcardViolations(summaries []domain.ExposureSummary, ignorePorts []int) []domain.ExposureSummary {

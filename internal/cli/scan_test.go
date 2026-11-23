@@ -189,3 +189,64 @@ func TestWriteGitHubStepSummary(t *testing.T) {
 		t.Errorf("expected clean entry for port 6379, got: %s", content)
 	}
 }
+
+type mockScanAnalyzer struct {
+	report *domain.ScanReport
+	err    error
+}
+
+func (m *mockScanAnalyzer) ScanReport(ctx context.Context) (*domain.ScanReport, error) {
+	return m.report, m.err
+}
+
+func (m *mockScanAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, error) {
+	if m.report != nil {
+		return m.report.Summaries, m.err
+	}
+	return nil, m.err
+}
+
+func (m *mockScanAnalyzer) Why(ctx context.Context, port uint16, projectDir string) (*domain.Exposure, error) {
+	return nil, nil
+}
+
+func TestRunScanOnce_Formats(t *testing.T) {
+	ctx := context.Background()
+	cmd := scanCmd
+
+	mockAn := &mockScanAnalyzer{
+		report: &domain.ScanReport{
+			Summaries: []domain.ExposureSummary{
+				{
+					Port:         5432,
+					Protocol:     "tcp",
+					Address:      "0.0.0.0",
+					ProcessName:  "docker-proxy",
+					Reachability: "PUBLIC",
+				},
+			},
+		},
+	}
+
+	// Test JSON Formatter
+	var jsonBuf bytes.Buffer
+	cmd.SetOut(&jsonBuf)
+	jsonFormatter := output.NewJSONFormatter()
+	if err := runScanOnce(ctx, cmd, mockAn, jsonFormatter, false, nil); err != nil {
+		t.Fatalf("runScanOnce with JSON formatter failed: %v", err)
+	}
+	if !strings.Contains(jsonBuf.String(), "\"summaries\"") {
+		t.Errorf("expected json output to contain \"summaries\", got: %s", jsonBuf.String())
+	}
+
+	// Test SARIF Formatter
+	var sarifBuf bytes.Buffer
+	cmd.SetOut(&sarifBuf)
+	sarifFormatter := output.NewSarifFormatter("0.2.1")
+	if err := runScanOnce(ctx, cmd, mockAn, sarifFormatter, false, nil); err != nil {
+		t.Fatalf("runScanOnce with SARIF formatter failed: %v", err)
+	}
+	if !strings.Contains(sarifBuf.String(), "\"version\": \"2.1.0\"") {
+		t.Errorf("expected SARIF output to contain version 2.1.0, got: %s", sarifBuf.String())
+	}
+}

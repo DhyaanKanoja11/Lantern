@@ -11,6 +11,8 @@
 
 Lantern is a local-first security CLI for developers. Instead of merely listing listening port numbers, Lantern traces **configuration causality**: identifying the exact file and source line in your Docker Compose configuration, container mapping, process, and host network interface responsible for exposing a service, and providing safe, deterministic remediation.
 
+> 📖 **Deep Dive**: Read the architectural breakdown on [Why Docker Silently Binds to 0.0.0.0 (And How to Trace Port Causality in Go)](https://dev.to/dhyaan_k/why-docker-silently-binds-to-0000-and-how-to-trace-port-causality-in-go-26p9).
+
 ![Lantern Configuration Causality Architecture](docs/assets/lantern-causality.svg)
 
 ---
@@ -316,8 +318,8 @@ docker compose down
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
-| `lantern scan` | Discovers active TCP listeners. Supports live watch mode (`-w`), team policy (`.lantern.yaml`), and CI enforcement (`--fail-on-wildcard`). | `lantern scan -w` |
-| `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Guides to `scan` if port omitted. | `lantern why 5432` |
+| `lantern scan` | Discovers active TCP listeners. Supports output formats (`text`, `json`, `sarif`), live watch mode (`-w`), team policy (`.lantern.yaml`), and CI enforcement (`--fail-on-wildcard`). | `lantern scan --format sarif` |
+| `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Supports `--format json` / `--format sarif`. | `lantern why 5432 --json` |
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
 | `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
 | `lantern version` | Prints semantic version, commit hash, build date, and target architecture. | `lantern version` |
@@ -341,6 +343,27 @@ lantern scan --fail-on-wildcard --ignore-ports 80,443
 ```
 
 When run inside GitHub Actions (`GITHUB_ACTIONS=true`), Lantern automatically emits native [error annotations](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions) directly on the pull request diff and exits with a non-zero code to block insecure configurations.
+
+#### GitHub Code Scanning & SARIF Integration
+
+Generate standard OASIS SARIF v2.1.0 reports to populate GitHub's native **Security → Code scanning alerts** dashboard:
+
+```bash
+lantern scan --format sarif > lantern.sarif
+```
+
+Upload the report directly in your GitHub Actions workflow:
+
+```yaml
+- name: Audit Port Exposures (SARIF)
+  run: lantern scan --format sarif > results.sarif
+  continue-on-error: true
+
+- name: Upload to GitHub Security Tab
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results.sarif
+```
 
 ### Team Policy Configuration (`.lantern.yaml`)
 
@@ -450,6 +473,7 @@ The remediation engine (`lantern fix`) is built around a **10-layer fail-closed 
 For an in-depth explanation of Lantern's internal layering, package boundaries, data flows, and design decisions:
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — Layered architecture, domain purity, and data pipeline.
+- [Why Docker Silently Binds to 0.0.0.0](https://dev.to/dhyaan_k/why-docker-silently-binds-to-0000-and-how-to-trace-port-causality-in-go-26p9) — DEV Community technical deep dive on port causality and exposure detection.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Local development workflow, code style, and PR guidelines.
 - [`SECURITY.md`](SECURITY.md) — Security policy and vulnerability disclosure procedures.
 - [`CHANGELOG.md`](CHANGELOG.md) — Version history and release notes.
