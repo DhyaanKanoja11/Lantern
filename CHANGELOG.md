@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.2.2] - 2026-11-24
+
+### Added
+- **OASIS SARIF v2.1.0 Engine**: Added native `--format sarif` to `lantern scan` and `lantern why` for automated ingestion into GitHub's native Security → Code scanning alerts tab (`ruleId: LANTERN001`).
+- **Structured JSON Engine**: Added `--format json` and `--json` flag alias across `lantern scan` and `lantern why <port>` for automated CI and script parsing.
+- **Live Terminal Watch Mode**: Added `-w, --watch` and `--interval <duration>` to `lantern scan` for real-time ANSI dashboard monitoring with live `[ALERT]` banners on wildcard exposure.
+- **Team Policy Engine**: Added `internal/policy` package auto-discovering `.lantern.yaml` / `.lantern.yml` configuration files with CLI flag override merging.
+- **CI Security Guardrails**: Added `--fail-on-wildcard` and `--ignore-ports` flags with native GitHub Actions inline annotations (`::error::`).
+- **Rich GitHub Step Summaries**: Generates formatted Markdown audit tables into `$GITHUB_STEP_SUMMARY` during GitHub Actions CI runs.
+- **Pre-Commit Hook Definition**: Added `.pre-commit-hooks.yaml` (`id: lantern-scan`) for local git commit validation.
+- **Automated Packaging Synchronizer**: Added `scripts/sync_packaging.py` and GitHub Actions hook to automatically sync Homebrew formula and Scoop bucket manifests on release.
+
+### Changed
+- Migrated canonical Go module path to `github.com/DhyaanKanoja11/Lantern`.
+- Updated documentation with GitHub Marketplace integration and architectural deep dive link.
+
+---
+
 ## [v0.2.1] - 2026-11-21
 
 ### Added
