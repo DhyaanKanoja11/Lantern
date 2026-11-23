@@ -1,9 +1,14 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"testing"
+	"time"
 
 	"github.com/DhyaanKanoja11/Lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/exposure"
+	"github.com/DhyaanKanoja11/Lantern/internal/output"
 )
 
 func TestIsWildcardAddress(t *testing.T) {
@@ -94,5 +99,50 @@ func TestScanCmd_Flags(t *testing.T) {
 	}
 	if ignoreFlag.DefValue != "[]" {
 		t.Errorf("expected default value '[]', got %q", ignoreFlag.DefValue)
+	}
+
+	watchFlag := scanCmd.Flags().Lookup("watch")
+	if watchFlag == nil {
+		t.Fatal("expected flag --watch to be registered")
+	}
+	if watchFlag.Shorthand != "w" {
+		t.Errorf("expected shorthand 'w', got %q", watchFlag.Shorthand)
+	}
+
+	intervalFlag := scanCmd.Flags().Lookup("interval")
+	if intervalFlag == nil {
+		t.Fatal("expected flag --interval to be registered")
+	}
+	if intervalFlag.DefValue != "2s" {
+		t.Errorf("expected default interval '2s', got %q", intervalFlag.DefValue)
+	}
+
+	configFlag := scanCmd.Flags().Lookup("config")
+	if configFlag == nil {
+		t.Fatal("expected flag --config to be registered")
+	}
+	if configFlag.Shorthand != "c" {
+		t.Errorf("expected shorthand 'c', got %q", configFlag.Shorthand)
+	}
+}
+
+func TestRunScanWatch_ContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	cmd := scanCmd
+	var outBuf bytes.Buffer
+	cmd.SetOut(&outBuf)
+
+	analyzer := exposure.NewDefaultAnalyzer()
+	formatter := output.NewTextFormatter()
+
+	err := runScanWatch(ctx, cmd, analyzer, formatter, 100*time.Millisecond, false, nil)
+	if err != nil {
+		t.Fatalf("expected clean exit on cancelled context, got error: %v", err)
+	}
+
+	if !bytes.Contains(outBuf.Bytes(), []byte("Lantern Watch Mode")) {
+		t.Errorf("expected output to contain watch mode header, got: %s", outBuf.String())
 	}
 }

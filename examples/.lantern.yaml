@@ -1,0 +1,11 @@
+# Lantern Team Security Policy
+# Place at the root of your project repository as .lantern.yaml or .lantern.yml
+version: 1
+policy:
+  # Disallow unintentional wildcard bindings (0.0.0.0 or ::)
+  fail_on_wildcard: true
+
+  # Whitelist approved public/ingress ports
+  ignore_ports:
+    - 80
+    - 443

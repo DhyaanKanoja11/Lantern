@@ -315,7 +315,7 @@ docker compose down
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
-| `lantern scan` | Discovers all active local TCP listening sockets and displays tabular reachability. Supports CI enforcement via `--fail-on-wildcard` and `--ignore-ports`. | `lantern scan --fail-on-wildcard --ignore-ports 80,443` |
+| `lantern scan` | Discovers active TCP listeners. Supports live watch mode (`-w`), team policy (`.lantern.yaml`), and CI enforcement (`--fail-on-wildcard`). | `lantern scan -w` |
 | `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Guides to `scan` if port omitted. | `lantern why 5432` |
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
 | `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
@@ -340,6 +340,31 @@ lantern scan --fail-on-wildcard --ignore-ports 80,443
 ```
 
 When run inside GitHub Actions (`GITHUB_ACTIONS=true`), Lantern automatically emits native [error annotations](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions) directly on the pull request diff and exits with a non-zero code to block insecure configurations.
+
+### Team Policy Configuration (`.lantern.yaml`)
+
+Define shared port security rules for your repository by adding a `.lantern.yaml` file to your project root:
+
+```yaml
+version: 1
+policy:
+  fail_on_wildcard: true
+  ignore_ports:
+    - 80
+    - 443
+```
+
+When `.lantern.yaml` is present, `lantern scan` automatically applies the policy in local development and CI without requiring long CLI flags.
+
+### Live Terminal Watch Mode
+
+Continuously monitor network listeners and container ports as you start and stop development services:
+
+```bash
+lantern scan --watch
+# Or specify a custom refresh interval:
+lantern scan -w --interval 5s
+```
 
 ---
 
