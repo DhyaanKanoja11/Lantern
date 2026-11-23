@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"lantern/internal/compose"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/compose"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // Remediator defines the contract for planning and executing safe automated remediations.

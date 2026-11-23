@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"lantern/internal/domain"
-	"lantern/internal/explain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/explain"
 )
 
 // GenerateRecommendation computes a safe remediation recommendation if supported by evidence.

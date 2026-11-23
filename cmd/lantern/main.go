@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"lantern/internal/cli"
+	"github.com/DhyaanKanoja11/Lantern/internal/cli"
 )
 
 func main() {

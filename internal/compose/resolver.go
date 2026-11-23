@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // Resolver attributes host port exposure to Docker Compose configuration files.

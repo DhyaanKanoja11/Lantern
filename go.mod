@@ -1,4 +1,4 @@
-module lantern
+module github.com/DhyaanKanoja11/Lantern
 
 go 1.22
 

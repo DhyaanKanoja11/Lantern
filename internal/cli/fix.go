@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/exposure"
+	"github.com/DhyaanKanoja11/Lantern/internal/remediation"
 	"github.com/spf13/cobra"
-	"lantern/internal/domain"
-	"lantern/internal/exposure"
-	"lantern/internal/remediation"
 )
 
 var (

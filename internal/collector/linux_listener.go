@@ -9,7 +9,7 @@ import (
 	"os"
 	"os/exec"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 type linuxCollector struct{}

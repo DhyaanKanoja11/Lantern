@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // CommandRunner defines the function signature for executing CLI commands.

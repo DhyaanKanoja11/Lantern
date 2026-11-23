@@ -5,7 +5,7 @@ import (
 	"net"
 	"strings"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // InterfaceProvider abstracts host network interface enumeration.

@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // ParsedPort represents normalized port mapping attributes extracted from a Compose declaration.

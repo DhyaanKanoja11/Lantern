@@ -5,7 +5,7 @@ package process
 import (
 	"context"
 	"fmt"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 type stubInspector struct{}

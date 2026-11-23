@@ -2,7 +2,7 @@ package network
 
 import (
 	"context"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // InterfaceClassifier defines the interface for discovering and classifying host network interfaces.

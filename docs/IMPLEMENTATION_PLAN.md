@@ -220,7 +220,7 @@ package collector
 
 import (
 	"context"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 type ListenerCollector interface {
@@ -235,7 +235,7 @@ package process
 
 import (
 	"context"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 type ProcessCorrelator interface {
@@ -249,7 +249,7 @@ package docker
 
 import (
 	"context"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 type DockerCorrelator interface {
@@ -265,7 +265,7 @@ package network
 
 import (
 	"context"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 type InterfaceClassifier interface {
@@ -280,7 +280,7 @@ package compose
 
 import (
 	"context"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 type ComposeResolver interface {
@@ -294,7 +294,7 @@ package exposure
 
 import (
 	"context"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 type Analyzer interface {
@@ -309,7 +309,7 @@ package output
 
 import (
 	"io"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 type Formatter interface {

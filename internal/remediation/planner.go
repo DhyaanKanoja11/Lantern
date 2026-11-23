@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"lantern/internal/domain"
-	"lantern/internal/explain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/explain"
 )
 
 // Plan evaluates an exposure and determines whether a safe, deterministic remediation can be executed.

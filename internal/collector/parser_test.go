@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 func TestNormalizeAddress(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 func TestClassifyIP_Loopback(t *testing.T) {

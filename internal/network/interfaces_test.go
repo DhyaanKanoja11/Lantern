@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 type mockProvider struct {

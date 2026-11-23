@@ -2,7 +2,7 @@ package process
 
 import (
 	"context"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // ProcessInspector defines the interface for discovering process metadata by PID.

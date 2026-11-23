@@ -252,9 +252,15 @@ Verify archive integrity:
 sha256sum --ignore-missing -c checksums.txt
 ```
 
-### Option F: Build from Source (Go 1.22+)
+### Option F: Go Install or Build from Source (Go 1.22+)
 
-Clone the repository and build:
+Install directly via `go install`:
+
+```bash
+go install github.com/DhyaanKanoja11/Lantern/cmd/lantern@latest
+```
+
+Or clone the repository and build from source:
 
 ```bash
 git clone https://github.com/DhyaanKanoja11/Lantern.git

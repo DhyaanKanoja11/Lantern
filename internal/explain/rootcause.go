@@ -5,7 +5,7 @@ import (
 	"net"
 	"strings"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // RootCauseType categorizes the primary causal origin of service exposure.

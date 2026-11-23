@@ -1,7 +1,7 @@
 package explain
 
 import (
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // Explainer generates structured explanations and formats exposure paths.

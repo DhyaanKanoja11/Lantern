@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/DhyaanKanoja11/Lantern/internal/exposure"
+	"github.com/DhyaanKanoja11/Lantern/internal/output"
 	"github.com/spf13/cobra"
-	"lantern/internal/exposure"
-	"lantern/internal/output"
 )
 
 var whyCmd = &cobra.Command{

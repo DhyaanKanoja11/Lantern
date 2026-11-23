@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/DhyaanKanoja11/Lantern/internal/compose"
 	"gopkg.in/yaml.v3"
-	"lantern/internal/compose"
 )
 
 // TargetLocation holds AST coordinates and text bounds for an exact Compose port item.

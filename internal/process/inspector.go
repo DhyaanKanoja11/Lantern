@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // LinuxInspector discovers process details by reading /proc/<pid> files.

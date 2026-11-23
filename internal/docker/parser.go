@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // rawContainer represents the JSON schema returned by `docker inspect`.

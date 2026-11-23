@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 func TestTextFormatter_RenderScan_Empty(t *testing.T) {

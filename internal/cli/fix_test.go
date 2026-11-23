@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"lantern/internal/domain"
-	"lantern/internal/remediation"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/remediation"
 )
 
 type mockFixAnalyzer struct {

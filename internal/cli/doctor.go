@@ -9,9 +9,9 @@ import (
 	"os/exec"
 	"runtime"
 
+	"github.com/DhyaanKanoja11/Lantern/internal/collector"
+	"github.com/DhyaanKanoja11/Lantern/internal/docker"
 	"github.com/spf13/cobra"
-	"lantern/internal/collector"
-	"lantern/internal/docker"
 )
 
 // DoctorCheck represents the outcome of a readiness check.

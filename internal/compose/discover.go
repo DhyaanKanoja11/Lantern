@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // FileReader abstracts filesystem access for reading Compose files.

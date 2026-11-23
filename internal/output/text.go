@@ -6,8 +6,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"lantern/internal/domain"
-	"lantern/internal/explain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/explain"
 )
 
 // TextFormatter renders human-readable plain text output for the CLI.

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 var (

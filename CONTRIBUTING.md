@@ -67,6 +67,11 @@ To install the binary to `$GOPATH/bin`:
 go install ./cmd/lantern
 ```
 
+Or install directly via Go module:
+```bash
+go install github.com/DhyaanKanoja11/Lantern/cmd/lantern@latest
+```
+
 ---
 
 ## Testing & Validation

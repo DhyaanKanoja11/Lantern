@@ -2,7 +2,7 @@ package exposure
 
 import (
 	"context"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // Analyzer defines the core engine interface for analyzing service reachability.

@@ -3,7 +3,7 @@ package explain
 import (
 	"fmt"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // Explanation provides the complete, deterministic causal explanation of service exposure.

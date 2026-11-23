@@ -2,7 +2,7 @@ package collector
 
 import (
 	"context"
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // ListenerCollector defines the interface for discovering active listening sockets.

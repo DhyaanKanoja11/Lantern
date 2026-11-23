@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"strings"
 
-	"lantern/internal/collector"
-	"lantern/internal/compose"
-	"lantern/internal/docker"
-	"lantern/internal/domain"
-	"lantern/internal/explain"
-	"lantern/internal/network"
-	"lantern/internal/process"
+	"github.com/DhyaanKanoja11/Lantern/internal/collector"
+	"github.com/DhyaanKanoja11/Lantern/internal/compose"
+	"github.com/DhyaanKanoja11/Lantern/internal/docker"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/explain"
+	"github.com/DhyaanKanoja11/Lantern/internal/network"
+	"github.com/DhyaanKanoja11/Lantern/internal/process"
 )
 
 var (

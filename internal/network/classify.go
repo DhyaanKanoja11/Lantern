@@ -4,7 +4,7 @@ import (
 	"net"
 	"strings"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 var (

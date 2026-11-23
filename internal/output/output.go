@@ -1,8 +1,8 @@
 package output
 
 import (
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 	"io"
-	"lantern/internal/domain"
 )
 
 // Formatter renders exposure results for CLI presentation.

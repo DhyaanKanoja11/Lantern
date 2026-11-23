@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 func TestCLIClient_ListContainers_Success(t *testing.T) {

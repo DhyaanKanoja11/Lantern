@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 func TestResolver_ServiceIdentification(t *testing.T) {

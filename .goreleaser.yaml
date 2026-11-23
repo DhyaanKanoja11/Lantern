@@ -28,9 +28,9 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X lantern/internal/cli.Version={{ if .IsSnapshot }}{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
-      - -X lantern/internal/cli.Commit={{ .Commit }}
-      - -X lantern/internal/cli.Date={{ .Date }}
+      - -X github.com/DhyaanKanoja11/Lantern/internal/cli.Version={{ if .IsSnapshot }}{{ .Version }}{{ else }}{{ .Tag }}{{ end }}
+      - -X github.com/DhyaanKanoja11/Lantern/internal/cli.Commit={{ .Commit }}
+      - -X github.com/DhyaanKanoja11/Lantern/internal/cli.Date={{ .Date }}
 
 archives:
   - id: default

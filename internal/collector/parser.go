@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
 // NormalizeAddress cleans and standardizes IPv4 and IPv6 representation.
