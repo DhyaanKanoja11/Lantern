@@ -41,3 +41,15 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Sync Package Manager Manifests (Homebrew & Scoop)
+        run: |
+          python scripts/sync_packaging.py \
+            --version "${{ github.ref_name }}" \
+            --checksums dist/checksums.txt \
+            --token "${{ secrets.RELEASE_PAT }}"

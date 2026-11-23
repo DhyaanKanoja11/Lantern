@@ -203,7 +203,13 @@ brew upgrade lantern
 ### Option C: Windows Package Managers
 
 #### Scoop
-Install via the standalone Scoop manifest:
+Install via the official Scoop bucket:
+```powershell
+scoop bucket add dhyaan https://github.com/DhyaanKanoja11/scoop-bucket
+scoop install lantern
+```
+
+Or install directly via the standalone manifest:
 ```powershell
 scoop install https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/packaging/scoop/lantern.json
 ```
