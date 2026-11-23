@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
 PackageIdentifier: DhyaanKanoja11.Lantern
 PackageVersion: 0.2.1
+PackageLocale: en-US
 PackageName: Lantern
 Publisher: Dhyaan Kanoja
 PublisherUrl: https://github.com/DhyaanKanoja11
