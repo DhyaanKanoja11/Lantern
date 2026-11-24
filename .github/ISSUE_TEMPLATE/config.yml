@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability Reporting
+    url: https://github.com/DhyaanKanoja11/Lantern/security/advisories/new
+    about: Privately report a security vulnerability or exploit.
+  - name: Architectural Deep Dive & Discussion
+    url: https://dev.to/dhyaan_k/why-docker-silently-binds-to-0000-and-how-to-trace-port-causality-in-go-26p9
+    about: Read the engineering write-up on Docker port causality and socket tables.
+  - name: External Tester Programme
+    url: https://github.com/DhyaanKanoja11/Lantern/blob/main/docs/TESTER_PROGRAMME.md
+    about: Join the structured community testing programme and earn repository credit.

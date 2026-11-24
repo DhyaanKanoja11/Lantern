@@ -1,35 +1,88 @@
 name: CI
 
-"on":
+on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-    name: Test & Build (Go ${{ matrix.go-version }})
+  lint-and-hygiene:
+    name: Code Hygiene & Formatting
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          check-latest: true
+
+      - name: Verify Formatting (gofmt)
+        run: |
+          UNFORMATTED=$(gofmt -s -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "::error::The following Go files are not formatted properly according to gofmt:"
+            echo "$UNFORMATTED"
+            echo "Please run: gofmt -s -w ."
+            exit 1
+          fi
+          echo "gofmt verification passed."
+
+      - name: Verify Go Module Tidy
+        run: |
+          go mod tidy
+          if ! git diff --exit-code go.mod go.sum; then
+            echo "::error::go.mod or go.sum is not tidy. Run 'go mod tidy' and commit changes."
+            exit 1
+          fi
+          echo "go mod tidy verification passed."
+
+  test:
+    name: Test (${{ matrix.os }}, Go ${{ matrix.go-version }})
+    needs: lint-and-hygiene
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
         go-version: ['1.22', '1.23']
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
+          check-latest: true
 
-      - name: Run tests
-        run: go test -count=1 ./...
+      - name: Run Tests with Race Detector
+        run: go test -v -race -coverprofile=coverage.out ./...
 
-      - name: Run race detector
-        run: go test -race -count=1 ./...
-
-      - name: Run go vet
+      - name: Run Static Analysis (go vet)
         run: go vet ./...
 
-      - name: Build binary
+      - name: Build Binary
         run: go build ./cmd/lantern
+
+      - name: Verify CLI Basic Invariants
+        shell: bash
+        run: |
+          ./lantern version
+          ./lantern doctor || true
+          ./lantern fix --help
+          ./lantern scan --help

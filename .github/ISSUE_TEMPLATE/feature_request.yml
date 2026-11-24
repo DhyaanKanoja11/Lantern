@@ -1,0 +1,67 @@
+name: Feature Request
+description: Suggest a new idea, CLI flag, platform capability, or integration
+title: "[FEATURE]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve Lantern!
+        Lantern adheres to strict design principles: **local-first developer security**, **configuration causality**, **standard library first**, and **zero outbound network telemetry**.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: Which area does this feature relate to?
+      options:
+        - CLI Flags & Output Ergonomics
+        - Output Engines (SARIF, JSON, Formats)
+        - Automated Remediation (`lantern fix`)
+        - Docker Compose & Container Attribution
+        - CI / GitHub Action Integration
+        - Operating System & Platform Support
+        - Documentation & Guides
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a problem or workflow friction?
+      placeholder: I am trying to ... but currently ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution & CLI UX
+      description: Describe the solution you'd like and provide an example CLI command and expected output.
+      placeholder: |
+        $ lantern scan --my-new-flag
+        [Output example here]
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other tools or workarounds have you considered?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: alignment
+    attributes:
+      label: Architectural Alignment
+      description: "Please confirm the proposed feature adheres to Lantern's core values:"
+      options:
+        - label: This feature requires zero outbound network requests or user telemetry.
+          required: true
+        - label: This feature favors standard library primitives and avoids unnecessary external dependencies.
+          required: true
+        - label: This feature preserves fail-closed safety (no destructive actions without verification).
+          required: true

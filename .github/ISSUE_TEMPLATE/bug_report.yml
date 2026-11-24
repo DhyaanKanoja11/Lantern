@@ -1,0 +1,111 @@
+name: Bug Report
+description: Report an issue, unexpected error, or incorrect causality attribution
+title: "[BUG]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue with Lantern!
+        Please fill out this form as completely as possible to help us diagnose and reproduce the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug or unexpected behavior.
+      placeholder: Tell us what happened...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: Select the host operating system where Lantern is running.
+      options:
+        - Ubuntu / Debian Linux
+        - Fedora / RHEL / CentOS
+        - Arch Linux
+        - Alpine Linux
+        - macOS (Apple Silicon / ARM64)
+        - macOS (Intel / x86_64)
+        - Windows 11 / 10 (WSL2)
+        - Windows 11 / 10 (Native Diagnostic Mode)
+        - Other (specify below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Installation Method
+      description: How did you install Lantern?
+      options:
+        - Homebrew (brew install DhyaanKanoja11/tap/lantern)
+        - Scoop (scoop install lantern)
+        - WinGet (winget install DhyaanKanoja11.Lantern)
+        - Official Install Script (curl -fsSL ... | bash)
+        - Debian / RPM Package (.deb / .rpm)
+        - Pre-built binary from GitHub Releases
+        - Built from source (go install / go build)
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor_output
+    attributes:
+      label: Diagnostics (`lantern doctor`)
+      description: Run `lantern doctor` in your terminal and paste the full output below.
+      render: text
+      placeholder: |
+        [PASS] Platform: linux / amd64
+        [PASS] Kernel: Linux 6.6.x
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce & Docker Compose Configuration
+      description: |
+        1. Exact Lantern command executed
+        2. Relevant `docker-compose.yml` or container launch configuration
+        3. Observed failure
+      placeholder: |
+        1. Run `docker compose up -d` with compose file:
+           ```yaml
+           services:
+             web:
+               image: nginx
+               ports:
+                 - "8080:80"
+           ```
+        2. Run `lantern scan`
+        3. Run `lantern why 8080`
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect Lantern to output or do instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_output
+    attributes:
+      label: Actual Output / Terminal Logs
+      description: Paste the exact terminal output, including any error messages or stack traces.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Any other context, firewall configuration, container runtime details (e.g. Podman, OrbStack, Docker Desktop version).
