@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.2.3] - 2026-11-24
+
+### Added
+- **Automated Remediation Diff Patch Generator**: Added `--diff` flag to `lantern fix <port>` to generate standard unified Git diffs with 3 lines of surrounding context. Output is piped cleanly to stdout for direct consumption by `git apply` in CI workflows, enabling automated fix pull request generation.
+- **Fail-Closed Patch Protection**: Blocks diff generation for non-existent sockets or unsupported exposure types with non-zero exit codes, ensuring CI automation never creates malformed or empty patches.
+
+---
+
 ## [v0.2.2] - 2026-11-24
 
 ### Added

@@ -15,6 +15,7 @@ import (
 
 var (
 	dryRunFlag    bool
+	diffFlag      bool
 	fixAnalyzer   exposure.Analyzer      = exposure.NewDefaultAnalyzer()
 	fixRemediator remediation.Remediator = remediation.NewDefaultRemediator()
 )
@@ -36,6 +37,9 @@ var fixCmd = &cobra.Command{
 		exp, err := analyzer.Why(cmd.Context(), uint16(portVal), ".")
 		if err != nil {
 			if errors.Is(err, exposure.ErrNoListener) {
+				if diffFlag {
+					return fmt.Errorf("no listening service found on port %d", portVal)
+				}
 				fmt.Fprintf(cmd.OutOrStdout(), "No listening service found on port %d.\n", portVal)
 				return nil
 			}
@@ -46,6 +50,15 @@ var fixCmd = &cobra.Command{
 		plan, err := remediator.Plan(cmd.Context(), exp)
 		if err != nil {
 			return err
+		}
+
+		if diffFlag {
+			diffStr, err := remediator.Diff(cmd.Context(), plan)
+			if err != nil {
+				return err
+			}
+			fmt.Fprint(cmd.OutOrStdout(), diffStr)
+			return nil
 		}
 
 		switch plan.Status {
@@ -162,4 +175,5 @@ var fixCmd = &cobra.Command{
 
 func init() {
 	fixCmd.Flags().BoolVar(&dryRunFlag, "dry-run", false, "Preview planned remediation without modifying files")
+	fixCmd.Flags().BoolVar(&diffFlag, "diff", false, "Output unified git diff for automated patching without modifying files")
 }

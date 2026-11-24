@@ -14,6 +14,7 @@ import (
 type Remediator interface {
 	Plan(ctx context.Context, exp *domain.Exposure) (*domain.Remediation, error)
 	Apply(ctx context.Context, plan *domain.Remediation) (*domain.FixResult, error)
+	Diff(ctx context.Context, plan *domain.Remediation) (string, error)
 }
 
 // DefaultRemediator implements the Remediator contract for Lantern.
@@ -28,6 +29,11 @@ func NewDefaultRemediator() *DefaultRemediator {
 func (r *DefaultRemediator) Plan(ctx context.Context, exp *domain.Exposure) (*domain.Remediation, error) {
 	plan := Plan(exp)
 	return plan, nil
+}
+
+// Diff generates a standard unified git diff for a remediation plan without modifying files.
+func (r *DefaultRemediator) Diff(ctx context.Context, plan *domain.Remediation) (string, error) {
+	return GenerateDiff(plan)
 }
 
 // Apply executes a supported remediation plan with pre-modification backup and atomic writing.

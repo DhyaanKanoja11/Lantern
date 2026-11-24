@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/DhyaanKanoja11/Lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/exposure"
 	"github.com/DhyaanKanoja11/Lantern/internal/remediation"
 )
 
@@ -425,6 +426,10 @@ func (m *toctouModifyingRemediator) Apply(ctx context.Context, plan *domain.Reme
 	return m.underlying.Apply(ctx, plan)
 }
 
+func (m *toctouModifyingRemediator) Diff(ctx context.Context, plan *domain.Remediation) (string, error) {
+	return m.underlying.Diff(ctx, plan)
+}
+
 func TestFixCommand_TOCTOU_AbortsCleanly(t *testing.T) {
 	tmpDir := t.TempDir()
 	composePath := filepath.Join(tmpDir, "docker-compose.yml")
@@ -697,5 +702,175 @@ func TestFixCommand_InferredAttribution_DryRunPreview(t *testing.T) {
 	diskContent, _ := os.ReadFile(composePath)
 	if string(diskContent) != composeContent {
 		t.Errorf("file should not have been modified on dry-run")
+	}
+}
+
+func TestFixCommand_DiffFlag_Supported(t *testing.T) {
+	origAnalyzer := fixAnalyzer
+	origRemediator := fixRemediator
+	defer func() {
+		fixAnalyzer = origAnalyzer
+		fixRemediator = origRemediator
+		diffFlag = false
+	}()
+
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+	composeContent := `services:
+  db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	fixAnalyzer = &mockFixAnalyzer{
+		exposure: &domain.Exposure{
+			Port:        5432,
+			Protocol:    "tcp",
+			BindAddress: "0.0.0.0",
+			Listener: domain.Listener{
+				Port:     5432,
+				Protocol: "tcp",
+				Address:  "0.0.0.0",
+			},
+			Container: &domain.Container{
+				ID:              "cont-123",
+				Name:            "db_1",
+				Image:           "postgres:15",
+				AttributionMode: domain.AttributionDirect,
+			},
+			DockerMapping: &domain.PortMapping{
+				HostIP:        "0.0.0.0",
+				HostPort:      5432,
+				ContainerPort: 5432,
+				Protocol:      "tcp",
+			},
+			Config: &domain.ConfigEvidence{
+				File:          composePath,
+				Line:          5,
+				Evidence:      "5432:5432",
+				Service:       "db",
+				HostPort:      5432,
+				ContainerPort: 5432,
+				Certain:       true,
+			},
+			Recommendation: &domain.Recommendation{
+				Type:      "bind_localhost",
+				Current:   "5432:5432",
+				Suggested: "127.0.0.1:5432:5432",
+			},
+			Reachability: domain.Reachability{
+				Local: true,
+				LAN:   "yes",
+				State: "LAN_REACHABLE",
+			},
+		},
+	}
+	fixRemediator = remediation.NewDefaultRemediator()
+
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+	rootCmd.SetArgs([]string{"fix", "5432", "--diff"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected clean exit on fix --diff, got error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "--- a/") || !strings.Contains(out, "+++ b/") {
+		t.Fatalf("expected git diff headers, got:\n%s", out)
+	}
+	if !strings.Contains(out, `-      - "5432:5432"`) {
+		t.Errorf("expected removed line in diff, got:\n%s", out)
+	}
+	if !strings.Contains(out, `+      - "127.0.0.1:5432:5432"`) {
+		t.Errorf("expected added line in diff, got:\n%s", out)
+	}
+
+	// Verify file was NOT modified on disk
+	diskBytes, _ := os.ReadFile(composePath)
+	if string(diskBytes) != composeContent {
+		t.Errorf("expected file to remain unchanged on disk, but content differed")
+	}
+}
+
+func TestFixCommand_DiffFlag_UnsupportedExposure(t *testing.T) {
+	origAnalyzer := fixAnalyzer
+	origRemediator := fixRemediator
+	defer func() {
+		fixAnalyzer = origAnalyzer
+		fixRemediator = origRemediator
+		diffFlag = false
+	}()
+
+	fixAnalyzer = &mockFixAnalyzer{
+		exposure: &domain.Exposure{
+			Port:        3000,
+			Protocol:    "tcp",
+			BindAddress: "0.0.0.0",
+			Listener: domain.Listener{
+				Port:     3000,
+				Protocol: "tcp",
+				Address:  "0.0.0.0",
+			},
+			Process: &domain.Process{
+				PID:  1234,
+				Name: "node",
+			},
+			Reachability: domain.Reachability{
+				Local: true,
+				LAN:   "yes",
+				State: "LAN_REACHABLE",
+			},
+		},
+	}
+	fixRemediator = remediation.NewDefaultRemediator()
+
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+	rootCmd.SetArgs([]string{"fix", "3000", "--diff"})
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error on fix --diff for unsupported exposure, got nil")
+	}
+	if !strings.Contains(err.Error(), "cannot generate diff for UNSUPPORTED") {
+		t.Errorf("expected UNSUPPORTED diff error, got: %v", err)
+	}
+}
+
+func TestFixCommand_DiffFlag_NoListener(t *testing.T) {
+	origAnalyzer := fixAnalyzer
+	origRemediator := fixRemediator
+	defer func() {
+		fixAnalyzer = origAnalyzer
+		fixRemediator = origRemediator
+		diffFlag = false
+	}()
+
+	fixAnalyzer = &mockFixAnalyzer{
+		err: exposure.ErrNoListener,
+	}
+
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+	rootCmd.SetArgs([]string{"fix", "9999", "--diff"})
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for no listener when --diff is passed, got nil")
+	}
+	if !strings.Contains(err.Error(), "no listening service found on port 9999") {
+		t.Errorf("expected no listening service error, got: %v", err)
 	}
 }
