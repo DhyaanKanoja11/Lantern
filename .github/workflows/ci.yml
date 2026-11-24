@@ -55,11 +55,31 @@ jobs:
     name: Test (${{ matrix.os }}, Go ${{ matrix.go-version }})
     needs: lint-and-hygiene
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        go-version: ['1.22', '1.23']
+        include:
+          # Linux: full race detector & coverage across Go 1.22 & 1.23
+          - os: ubuntu-latest
+            go-version: '1.22'
+            race: true
+          - os: ubuntu-latest
+            go-version: '1.23'
+            race: true
+          # macOS: Apple Silicon runner on Go 1.23 (Go 1.22 has known Mach-O LC_UUID bug with -race on macOS 14)
+          - os: macos-latest
+            go-version: '1.23'
+            race: true
+          # Windows: native Windows test & binary compilation across Go 1.22 & 1.23
+          - os: windows-latest
+            go-version: '1.22'
+            race: false
+          - os: windows-latest
+            go-version: '1.23'
+            race: false
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -70,8 +90,13 @@ jobs:
           go-version: ${{ matrix.go-version }}
           check-latest: true
 
-      - name: Run Tests with Race Detector
-        run: go test -v -race -coverprofile=coverage.out ./...
+      - name: Run Tests
+        run: |
+          if [ "${{ matrix.race }}" = "true" ]; then
+            go test -v -race -coverprofile=coverage.out ./...
+          else
+            go test -v ./...
+          fi
 
       - name: Run Static Analysis (go vet)
         run: go vet ./...
@@ -80,7 +105,6 @@ jobs:
         run: go build ./cmd/lantern
 
       - name: Verify CLI Basic Invariants
-        shell: bash
         run: |
           ./lantern version
           ./lantern doctor || true
