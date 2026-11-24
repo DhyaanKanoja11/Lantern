@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/DhyaanKanoja11/Lantern/internal/domain"
@@ -116,6 +117,25 @@ func (c *CLIClient) InspectContainer(ctx context.Context, id string) (*domain.Co
 	}
 
 	return &containers[0], nil
+}
+
+// StopContainer cleanly stops a running container by ID or name with an optional timeout.
+func (c *CLIClient) StopContainer(ctx context.Context, id string, timeoutSeconds int) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("empty container ID")
+	}
+
+	args := []string{"stop"}
+	if timeoutSeconds > 0 {
+		args = append(args, "-t", strconv.Itoa(timeoutSeconds))
+	}
+	args = append(args, id)
+
+	_, err := c.runner(ctx, "docker", args...)
+	if err != nil {
+		return wrapDockerError(err)
+	}
+	return nil
 }
 
 // CorrelatePID correlates a host listener PID with a Docker container's Host PID.

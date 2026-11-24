@@ -160,6 +160,29 @@ Backup:
     /home/user/app/docker-compose.yml.lantern.bak
 ```
 
+### Context-Aware Port Freeing (`lantern free 5432` / `lantern kill 5432`)
+
+Blunt utilities (`kill -9` or `npx kill-port`) blindly terminate processes. When a port is owned by Docker, killing `docker-proxy` corrupts Docker's userland networking state. Lantern Free inspects what actually owns the port before taking action:
+- If held by a **Docker container**, it stops the container cleanly via the Docker API.
+- If held by a **native process**, it safely terminates the process.
+
+```bash
+$ lantern free 5432
+Port 5432 is currently occupied by Docker container:
+  Container: postgres-dev (ID: c1234567890a)
+  Image:     postgres:16-alpine
+  Project:   my-backend (service: db)
+
+Stop this container? [y/N]: y
+[OK] Docker container "postgres-dev" stopped. Port 5432 is now free.
+```
+
+Preview without taking action using `--dry-run`, or bypass prompts in scripts using `-f` / `--force`:
+```bash
+lantern free 5432 --dry-run
+lantern free 5432 -f
+```
+
 ---
 
 ## 4. Installation
@@ -320,6 +343,7 @@ docker compose down
 | :--- | :--- | :--- |
 | `lantern scan` | Discovers active TCP listeners. Supports output formats (`text`, `json`, `sarif`), live watch mode (`-w`), team policy (`.lantern.yaml`), and CI enforcement (`--fail-on-wildcard`). | `lantern scan --format sarif` |
 | `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Supports `--format json` / `--format sarif`. | `lantern why 5432 --json` |
+| `lantern free <port>` | Context-aware port freeing: cleanly stops Docker containers or terminates native processes occupying a port. Aliased as `lantern kill`. | `lantern free 5432` |
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
 | `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
 | `lantern version` | Prints semantic version, commit hash, build date, and target architecture. | `lantern version` |

@@ -729,3 +729,40 @@ func TestCLIClient_IsAvailable(t *testing.T) {
 		t.Errorf("expected IsAvailable false when runner errors, got true")
 	}
 }
+
+func TestCLIClient_StopContainer(t *testing.T) {
+	var capturedArgs []string
+	runner := func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		capturedArgs = args
+		return []byte("c123"), nil
+	}
+	client := NewCLIClientWithRunner(runner)
+
+	// Empty ID error
+	if err := client.StopContainer(context.Background(), "", 10); err == nil {
+		t.Error("expected error for empty container ID, got nil")
+	}
+
+	// Normal stop with timeout
+	if err := client.StopContainer(context.Background(), "c123", 5); err != nil {
+		t.Fatalf("unexpected error stopping container: %v", err)
+	}
+	expected := []string{"stop", "-t", "5", "c123"}
+	if len(capturedArgs) != len(expected) {
+		t.Fatalf("expected args %v, got %v", expected, capturedArgs)
+	}
+	for i := range expected {
+		if capturedArgs[i] != expected[i] {
+			t.Errorf("arg[%d] expected %q, got %q", i, expected[i], capturedArgs[i])
+		}
+	}
+
+	// Stop without timeout
+	if err := client.StopContainer(context.Background(), "c123", 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expectedNoTimeout := []string{"stop", "c123"}
+	if len(capturedArgs) != len(expectedNoTimeout) {
+		t.Fatalf("expected args %v, got %v", expectedNoTimeout, capturedArgs)
+	}
+}

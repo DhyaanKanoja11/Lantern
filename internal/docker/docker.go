@@ -25,10 +25,11 @@ var (
 	ErrAmbiguousMapping = errors.New("ambiguous container mapping: multiple containers match listener")
 )
 
-// Client defines the interface for Docker container discovery.
+// Client defines the interface for Docker container discovery and lifecycle management.
 type Client interface {
 	ListContainers(ctx context.Context) ([]domain.Container, error)
 	InspectContainer(ctx context.Context, id string) (*domain.Container, error)
+	StopContainer(ctx context.Context, id string, timeoutSeconds int) error
 }
 
 // DockerCorrelator correlates listeners and processes with Docker containers.

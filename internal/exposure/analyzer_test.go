@@ -78,6 +78,10 @@ func (m *mockDocker) InspectContainer(ctx context.Context, id string) (*domain.C
 	return nil, errors.New("container not found")
 }
 
+func (m *mockDocker) StopContainer(ctx context.Context, id string, timeoutSeconds int) error {
+	return nil
+}
+
 func (m *mockDocker) IsAvailable(ctx context.Context) bool {
 	return m.available
 }

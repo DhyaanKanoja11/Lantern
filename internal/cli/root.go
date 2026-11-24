@@ -21,4 +21,5 @@ func init() {
 	rootCmd.AddCommand(scanCmd)
 	rootCmd.AddCommand(whyCmd)
 	rootCmd.AddCommand(fixCmd)
+	rootCmd.AddCommand(freeCmd)
 }
