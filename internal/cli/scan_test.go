@@ -179,13 +179,13 @@ func TestWriteGitHubStepSummary(t *testing.T) {
 	if !strings.Contains(content, "Lantern Port Exposure Report") {
 		t.Errorf("expected header in summary, got: %s", content)
 	}
-	if !strings.Contains(content, "| `5432` |") || !strings.Contains(content, "❌ **Violation**") {
+	if !strings.Contains(content, "| `5432` |") || !strings.Contains(content, "VIOLATION") {
 		t.Errorf("expected violation entry for port 5432, got: %s", content)
 	}
-	if !strings.Contains(content, "| `80` |") || !strings.Contains(content, "⚪ *Whitelisted*") {
+	if !strings.Contains(content, "| `80` |") || !strings.Contains(content, "WHITELISTED") {
 		t.Errorf("expected whitelisted entry for port 80, got: %s", content)
 	}
-	if !strings.Contains(content, "| `6379` |") || !strings.Contains(content, "✅ Clean") {
+	if !strings.Contains(content, "| `6379` |") || !strings.Contains(content, "CLEAN") {
 		t.Errorf("expected clean entry for port 6379, got: %s", content)
 	}
 }
@@ -211,6 +211,8 @@ func (m *mockScanAnalyzer) Why(ctx context.Context, port uint16, projectDir stri
 }
 
 func TestRunScanOnce_Formats(t *testing.T) {
+	// Isolate from CI runner step summary so mock test data does not pollute job summaries
+	t.Setenv("GITHUB_STEP_SUMMARY", "")
 	ctx := context.Background()
 	cmd := scanCmd
 

@@ -7,12 +7,12 @@
 
 ## Type of Change
 <!-- Mark the relevant option with an [x]: -->
-- [ ] 🐛 **Bug fix** (non-breaking change fixing an issue)
-- [ ] ✨ **New feature** (non-breaking change adding functionality or CLI flag)
-- [ ] 🛡️ **Security / Hardening** (improving invariant checks or fail-closed behavior)
-- [ ] ⚡ **Performance / Refactor** (code simplification, zero functional changes)
-- [ ] 📝 **Documentation** (updates to README, docs, or guides)
-- [ ] 📦 **Packaging / CI** (updates to build scripts, workflows, or distribution manifests)
+- [ ] **Bug fix** (non-breaking change fixing an issue)
+- [ ] **New feature** (non-breaking change adding functionality or CLI flag)
+- [ ] **Security / Hardening** (improving invariant checks or fail-closed behavior)
+- [ ] **Performance / Refactor** (code simplification, zero functional changes)
+- [ ] **Documentation** (updates to README, docs, or guides)
+- [ ] **Packaging / CI** (updates to build scripts, workflows, or distribution manifests)
 
 ## Architectural Alignment
 <!-- Confirm adherence to Lantern's core engineering principles: -->

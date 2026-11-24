@@ -124,7 +124,7 @@ func writeGitHubStepSummary(summaries []domain.ExposureSummary, violations []dom
 	}
 
 	var sb strings.Builder
-	sb.WriteString("### 🛡️ Lantern Port Exposure Report\n\n")
+	sb.WriteString("### Lantern Port Exposure Report\n\n")
 
 	if len(summaries) == 0 {
 		sb.WriteString("No active listening TCP sockets detected.\n")
@@ -140,12 +140,12 @@ func writeGitHubStepSummary(summaries []domain.ExposureSummary, violations []dom
 				target = "-"
 			}
 
-			status := "✅ Clean"
+			status := "CLEAN"
 			if isWildcardAddress(s.Address) {
 				if ignoredMap[s.Port] {
-					status = "⚪ *Whitelisted*"
+					status = "WHITELISTED"
 				} else {
-					status = "❌ **Violation**"
+					status = "VIOLATION"
 				}
 			}
 
@@ -155,9 +155,9 @@ func writeGitHubStepSummary(summaries []domain.ExposureSummary, violations []dom
 	}
 
 	if len(violations) > 0 {
-		sb.WriteString(fmt.Sprintf("\n> ⚠️ **%d wildcard exposure policy violation(s) detected.** Run `lantern why <port>` or `lantern fix <port>` to remediate.\n", len(violations)))
+		sb.WriteString(fmt.Sprintf("\n> [POLICY VIOLATION] %d wildcard exposure policy violation(s) detected. Run `lantern why <port>` or `lantern fix <port>` to remediate.\n", len(violations)))
 	} else {
-		sb.WriteString("\n> ✅ All active network listeners comply with security policy.\n")
+		sb.WriteString("\n> [PASS] All active network listeners comply with security policy.\n")
 	}
 
 	f, err := os.OpenFile(summaryPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
