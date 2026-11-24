@@ -7,11 +7,11 @@
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Lantern%20Action-blue.svg?logo=github)](https://github.com/marketplace/actions/lantern-security-scan)
 [![Go Version](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20WSL2-lightgrey.svg)](#8-supported-platforms-and-limitations)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#8-supported-platforms-and-limitations)
 
 Lantern is a local-first security CLI for developers. Instead of merely listing listening port numbers, Lantern traces **configuration causality**: identifying the exact file and source line in your Docker Compose configuration, container mapping, process, and host network interface responsible for exposing a service, and providing safe, deterministic remediation.
 
-> 📖 **Deep Dive**: Read the architectural breakdown on [Why Docker Silently Binds to 0.0.0.0 (And How to Trace Port Causality in Go)](https://dev.to/dhyaan_k/why-docker-silently-binds-to-0000-and-how-to-trace-port-causality-in-go-26p9).
+> **Deep Dive**: Read the architectural breakdown on [Why Docker Silently Binds to 0.0.0.0 (And How to Trace Port Causality in Go)](https://dev.to/dhyaan_k/why-docker-silently-binds-to-0000-and-how-to-trace-port-causality-in-go-26p9).
 
 ![Lantern Configuration Causality Architecture](docs/assets/lantern-causality.svg)
 
@@ -457,14 +457,14 @@ Lantern does not compete with network scanners or socket dumpers; it bridges the
 
 | Platform | Support Level | Behavior |
 | :--- | :--- | :--- |
-| **Linux (kernel 3.10+)** | **Primary** | Full functionality (`scan`, `why`, `doctor`, `fix`). |
-| **WSL2** | **Primary** | Full functionality inside WSL2 Linux environments. |
-| **macOS** | **Diagnostic** | Compiles cleanly. `doctor` and `version` work. Native socket inspection requires Linux/WSL2. |
-| **Windows** | **Diagnostic** | Compiles cleanly. `doctor` and `version` work. Native socket inspection requires Linux/WSL2. |
+| **Linux (kernel 3.10+)** | **Primary** | Full native functionality (`scan`, `why`, `doctor`, `fix`, `free`) via `ss` and `/proc`. |
+| **WSL2** | **Primary** | Full native functionality inside WSL2 Linux environments. |
+| **macOS** | **Primary** | Full native functionality via `lsof` socket discovery and `ps` process attribution. |
+| **Windows** | **Primary** | Full native functionality via Win32 `netstat` socket discovery and `tasklist` process attribution. |
 
-### Technical Limitations
+### Technical Capabilities & Guardrails
 
-- **Passive Socket Inspection**: Socket discovery relies on Linux kernel interfaces (`/proc/net/tcp`, `/proc/net/tcp6`, and `ss`). When running on macOS or Windows, invoke Lantern inside WSL2 or a Linux VM.
+- **Cross-Platform Socket Inspection**: Socket discovery operates natively without virtual machines: Linux uses `ss` and `/proc/net/tcp`, macOS uses native `lsof -iTCP -sTCP:LISTEN`, and Windows uses native Win32 `netstat -ano -p tcp`.
 - **Unprivileged Process Inspection & Inferred Attribution**: When running as an unprivileged user on Linux (UID > 0), root-owned sockets (such as `docker-proxy`) cannot have their PIDs or file descriptors read directly from `/proc`. Lantern automatically falls back to Docker published port metadata inference, clearly tagging the attribution as `INFERRED`, rendering an explicit `ATTRIBUTION NOTICE` explaining the unverified PID in `lantern why`, and restricting `lantern fix` to read-only `--dry-run` diffs until verified with root/sudo.
 - **Docker Daemon Diagnostic Guidance**: If the Docker daemon is stopped, socket permission is denied, or the Docker CLI is not installed, `lantern scan` continues to collect and display listening host sockets while rendering actionable diagnostic notices beneath the table.
 - **Supported Remediation Scope**: `lantern fix` is strictly designed for Docker Compose configurations. It does not attempt to modify arbitrary native application configurations (e.g., PostgreSQL `postgresql.conf` or Redis `redis.conf`) where configuration syntaxes vary unpredictably.

@@ -56,26 +56,23 @@ func TestRunDoctorChecks(t *testing.T) {
 
 	expectedChecks := []string{
 		"Operating System",
-		"Socket Inspection Tool (ss)",
-		"Process Filesystem (/proc)",
 		"Docker Environment",
 		"Network Interfaces",
 		"Listener Collector",
 	}
 
+	switch runtime.GOOS {
+	case "linux":
+		expectedChecks = append(expectedChecks, "Socket Inspection Tool (ss)", "Process Filesystem (/proc)", "Process Privilege Level")
+	case "darwin":
+		expectedChecks = append(expectedChecks, "Socket Inspection Tool (lsof)", "Process Inspection Tool (ps)")
+	case "windows":
+		expectedChecks = append(expectedChecks, "Socket Inspection Tool (netstat)", "Process Inspection Tool (tasklist)")
+	}
+
 	for _, expected := range expectedChecks {
 		if !names[expected] {
 			t.Errorf("expected check %q to be present in doctor checks", expected)
-		}
-	}
-
-	if runtime.GOOS == "linux" {
-		if !names["Process Privilege Level"] {
-			t.Errorf("expected check 'Process Privilege Level' to be present in doctor checks on Linux")
-		}
-	} else {
-		if names["Process Privilege Level"] {
-			t.Errorf("expected check 'Process Privilege Level' to be absent on non-Linux")
 		}
 	}
 }

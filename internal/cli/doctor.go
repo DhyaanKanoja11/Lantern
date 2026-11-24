@@ -26,17 +26,18 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 	var checks []DoctorCheck
 
 	// 1. Operating System
-	if runtime.GOOS == "linux" {
+	switch runtime.GOOS {
+	case "linux", "darwin", "windows":
 		checks = append(checks, DoctorCheck{
 			Name:    "Operating System",
 			Status:  "OK",
-			Message: "Linux detected (socket and process inspection supported)",
+			Message: fmt.Sprintf("%s detected (native socket and process inspection supported)", runtime.GOOS),
 		})
-	} else {
+	default:
 		checks = append(checks, DoctorCheck{
 			Name:    "Operating System",
 			Status:  "WARN",
-			Message: fmt.Sprintf("%s detected (live socket inspection requires Linux or WSL2)", runtime.GOOS),
+			Message: fmt.Sprintf("%s detected (live socket inspection requires Linux, macOS, or Windows)", runtime.GOOS),
 		})
 	}
 
@@ -57,40 +58,94 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 		}
 	}
 
-	// 2. Command 'ss'
-	if p, err := exec.LookPath("ss"); err == nil {
-		checks = append(checks, DoctorCheck{
-			Name:    "Socket Inspection Tool (ss)",
-			Status:  "OK",
-			Message: fmt.Sprintf("Found at %s", p),
-		})
-	} else {
-		checks = append(checks, DoctorCheck{
-			Name:    "Socket Inspection Tool (ss)",
-			Status:  "WARN",
-			Message: "'ss' not found in PATH (will fall back to /proc/net/tcp)",
-		})
+	// 3. Socket Inspection Tool
+	switch runtime.GOOS {
+	case "linux":
+		if p, err := exec.LookPath("ss"); err == nil {
+			checks = append(checks, DoctorCheck{
+				Name:    "Socket Inspection Tool (ss)",
+				Status:  "OK",
+				Message: fmt.Sprintf("Found at %s", p),
+			})
+		} else {
+			checks = append(checks, DoctorCheck{
+				Name:    "Socket Inspection Tool (ss)",
+				Status:  "WARN",
+				Message: "'ss' not found in PATH (will fall back to /proc/net/tcp)",
+			})
+		}
+	case "darwin":
+		if p, err := exec.LookPath("lsof"); err == nil {
+			checks = append(checks, DoctorCheck{
+				Name:    "Socket Inspection Tool (lsof)",
+				Status:  "OK",
+				Message: fmt.Sprintf("Found at %s", p),
+			})
+		} else {
+			checks = append(checks, DoctorCheck{
+				Name:    "Socket Inspection Tool (lsof)",
+				Status:  "FAIL",
+				Message: "'lsof' not found in PATH (macOS socket inspection unavailable)",
+			})
+		}
+	case "windows":
+		if p, err := exec.LookPath("netstat"); err == nil {
+			checks = append(checks, DoctorCheck{
+				Name:    "Socket Inspection Tool (netstat)",
+				Status:  "OK",
+				Message: fmt.Sprintf("Found at %s", p),
+			})
+		} else {
+			checks = append(checks, DoctorCheck{
+				Name:    "Socket Inspection Tool (netstat)",
+				Status:  "FAIL",
+				Message: "'netstat' not found in PATH (Windows socket inspection unavailable)",
+			})
+		}
 	}
 
-	// 3. /proc Filesystem Accessibility
-	if fi, err := os.Stat("/proc"); err == nil && fi.IsDir() {
-		checks = append(checks, DoctorCheck{
-			Name:    "Process Filesystem (/proc)",
-			Status:  "OK",
-			Message: "Accessible for process attribution",
-		})
-	} else {
-		if runtime.GOOS == "linux" {
+	// 4. Process Discovery Mechanism
+	switch runtime.GOOS {
+	case "linux":
+		if fi, err := os.Stat("/proc"); err == nil && fi.IsDir() {
+			checks = append(checks, DoctorCheck{
+				Name:    "Process Filesystem (/proc)",
+				Status:  "OK",
+				Message: "Accessible for process attribution",
+			})
+		} else {
 			checks = append(checks, DoctorCheck{
 				Name:    "Process Filesystem (/proc)",
 				Status:  "FAIL",
 				Message: "/proc is not accessible (process attribution unavailable)",
 			})
+		}
+	case "windows":
+		if p, err := exec.LookPath("tasklist"); err == nil {
+			checks = append(checks, DoctorCheck{
+				Name:    "Process Inspection Tool (tasklist)",
+				Status:  "OK",
+				Message: fmt.Sprintf("Found at %s", p),
+			})
 		} else {
 			checks = append(checks, DoctorCheck{
-				Name:    "Process Filesystem (/proc)",
-				Status:  "WARN",
-				Message: "/proc not present on non-Linux OS",
+				Name:    "Process Inspection Tool (tasklist)",
+				Status:  "FAIL",
+				Message: "'tasklist' not found in PATH",
+			})
+		}
+	case "darwin":
+		if p, err := exec.LookPath("ps"); err == nil {
+			checks = append(checks, DoctorCheck{
+				Name:    "Process Inspection Tool (ps)",
+				Status:  "OK",
+				Message: fmt.Sprintf("Found at %s", p),
+			})
+		} else {
+			checks = append(checks, DoctorCheck{
+				Name:    "Process Inspection Tool (ps)",
+				Status:  "FAIL",
+				Message: "'ps' not found in PATH",
 			})
 		}
 	}
