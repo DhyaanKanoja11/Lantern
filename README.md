@@ -345,6 +345,7 @@ docker compose down
 | `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Supports `--format json` / `--format sarif`. | `lantern why 5432 --json` |
 | `lantern free <port>` | Context-aware port freeing: cleanly stops Docker containers or terminates native processes occupying a port. Aliased as `lantern kill`. | `lantern free 5432` |
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
+| `lantern mcp` | Starts the Model Context Protocol (MCP) stdio server for AI agents (Claude Code, Cursor, Windsurf). | `lantern mcp` |
 | `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
 | `lantern version` | Prints semantic version, commit hash, build date, and target architecture. | `lantern version` |
 | `lantern [command] --help` | Displays usage instructions, flag descriptions, and POSIX exit codes. | `lantern why --help` |
@@ -428,6 +429,46 @@ lantern scan --watch
 # Or specify a custom refresh interval:
 lantern scan -w --interval 5s
 ```
+
+### AI Coding Agent Integration (Model Context Protocol / MCP)
+
+Lantern includes a native **Model Context Protocol (MCP)** stdio server, allowing AI coding assistants—including **Claude Code**, **Claude Desktop**, **Cursor**, and **Windsurf**—to inspect network exposure, trace port causality, and safely reclaim ports during autonomous execution.
+
+#### Adding to Claude Code
+Connect Lantern to Claude Code via the CLI:
+
+```bash
+claude mcp add lantern lantern mcp
+```
+
+#### Adding to Claude Desktop / Cursor / Windsurf
+Add the following configuration to your MCP configuration file (`claude_desktop_config.json`, `.cursor/mcp.json`, or `.windsurf/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "lantern": {
+      "command": "lantern",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+#### Installing via Smithery
+```bash
+npx -y @smithery/cli install lantern
+```
+
+#### Exposed MCP Tools
+
+| Tool Name | Parameters | Description |
+| :--- | :--- | :--- |
+| `lantern_scan` | *(none)* | Scans active TCP listeners on the host, returning structured process, container, and reachability classifications. |
+| `lantern_why` | `port` (int) | Traces causal exposure path for a port down to the exact `docker-compose.yml` service and line number. |
+| `lantern_free` | `port` (int), `force` (bool) | Safely reclaims an occupied port by cleanly stopping its Docker container or terminating its host process. |
+| `lantern_doctor` | *(none)* | Runs diagnostic environment readiness checks for socket collection and Docker connectivity. |
+
 
 ---
 

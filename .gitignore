@@ -20,6 +20,7 @@ Thumbs.db
 *.bak
 *.bak.*
 *.tmp
+*.log
 
 # Python artifacts
 __pycache__/

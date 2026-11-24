@@ -1,0 +1,11 @@
+# Smithery configuration for Lantern MCP Server
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties: {}
+  commandFunction: |-
+    (config) => ({
+      command: 'lantern',
+      args: ['mcp']
+    })
