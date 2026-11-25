@@ -312,6 +312,31 @@ Ensure your Go bin directory is in your `PATH`:
 export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
+### Shell Completion
+
+Generate tab-completion scripts for `bash`, `zsh`, `fish`, or `powershell`:
+
+```bash
+# Bash (current session)
+source <(lantern completion bash)
+
+# Bash (persistent on Linux)
+lantern completion bash | sudo tee /etc/bash_completion.d/lantern > /dev/null
+
+# Zsh (persistent)
+lantern completion zsh > "${fpath[1]}/_lantern"
+
+# Fish (persistent)
+lantern completion fish > ~/.config/fish/completions/lantern.fish
+```
+
+```powershell
+# PowerShell (current session)
+lantern completion powershell | Out-String | Invoke-Expression
+```
+
+Run `lantern completion --help` for full setup details per shell.
+
 ---
 
 ## 5. Quick-Start Example
@@ -355,6 +380,7 @@ docker compose down
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
 | `lantern mcp` | Starts the Model Context Protocol (MCP) stdio server for AI agents (Claude Code, Cursor, Windsurf). | `lantern mcp` |
 | `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
+| `lantern completion <shell>` | Generates shell tab-completion scripts for `bash`, `zsh`, `fish`, and `powershell`. | `lantern completion fish` |
 | `lantern version` | Prints semantic version, commit hash, build date, and target architecture. | `lantern version` |
 | `lantern [command] --help` | Displays usage instructions, flag descriptions, and POSIX exit codes. | `lantern why --help` |
 
