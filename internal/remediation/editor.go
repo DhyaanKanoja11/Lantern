@@ -129,6 +129,12 @@ func ModifyComposeBytes(data []byte, filePath string, targetService string, targ
 		return nil, err
 	}
 
+	for _, e := range initialEvidence {
+		if e.Service == loc.Service && e.Line == loc.Line && e.Interpolated {
+			return nil, fmt.Errorf("line %d uses variable interpolation (%s); refusing to replace it with a literal", loc.Line, e.Original)
+		}
+	}
+
 	hasCRLF := bytes.Contains(data, []byte("\r\n"))
 	rawLines := strings.Split(string(data), "\n")
 

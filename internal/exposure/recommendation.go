@@ -26,6 +26,11 @@ func GenerateRecommendation(exp *domain.Exposure, rc explain.RootCause) *domain.
 		// Build the suggestion from what's actually written in the file so
 		// ranges and /proto suffixes survive. If we can't, say nothing rather
 		// than suggest something that changes the mapping.
+		// Never rewrite a line that uses variables: a literal would silently
+		// replace the user's ${VAR} and the value we resolved may be stale.
+		if exp.Config.Interpolated {
+			return nil
+		}
 		original := exp.Config.Original
 		if original == "" {
 			original = exp.Config.Evidence

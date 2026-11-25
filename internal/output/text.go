@@ -105,6 +105,14 @@ func (t *TextFormatter) RenderWhy(w io.Writer, exp *domain.Exposure) error {
 		fmt.Fprintf(w, "  - Next steps: Run with elevated privileges (sudo) to verify process ownership, or use 'lantern fix %d --dry-run' to inspect the proposed change safely.\n\n", exp.Port)
 	}
 
+	if len(exp.Warnings) > 0 {
+		fmt.Fprintf(w, "NOTES\n\n")
+		for _, warn := range exp.Warnings {
+			fmt.Fprintf(w, "  - %s\n", warn)
+		}
+		fmt.Fprintln(w)
+	}
+
 	// 2. EXPOSURE PATH
 	fmt.Fprintf(w, "EXPOSURE PATH\n\n")
 	pathTree := explain.FormatPath(exp, expl.RootCause)

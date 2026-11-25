@@ -806,3 +806,14 @@ func TestModifyComposeBytes_RefusesToChangeProtocol(t *testing.T) {
 		t.Fatal("expected refusal: udp mapping would silently become tcp")
 	}
 }
+
+func TestModifyComposeBytes_RefusesInterpolatedLine(t *testing.T) {
+	data := []byte(`services:
+  web:
+    ports:
+      - "${WEB_PORT_LANTERN_UNSET:-8080}:80"
+`)
+	if _, err := ModifyComposeBytes(data, "docker-compose.yml", "web", 4, 8080, "127.0.0.1:8080:80"); err == nil {
+		t.Fatal("expected refusal for an interpolated declaration")
+	}
+}

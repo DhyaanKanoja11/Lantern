@@ -65,6 +65,7 @@ func (r *Resolver) FindPortEvidence(
 	}
 
 	var matched []ExtractedEvidence
+	sawUnresolved := false
 	readSuccessCount := 0
 
 	for _, file := range files {
@@ -82,6 +83,11 @@ func (r *Resolver) FindPortEvidence(
 		for _, decl := range declarations {
 			// 1. Service matching
 			if targetService != "" && !strings.EqualFold(decl.Service, targetService) {
+				continue
+			}
+
+			if decl.Unresolved {
+				sawUnresolved = true
 				continue
 			}
 
@@ -126,11 +132,16 @@ func (r *Resolver) FindPortEvidence(
 	}
 
 	if len(matched) == 0 {
+		if sawUnresolved {
+			return nil, ErrUnresolvedInterpolation
+		}
 		return nil, ErrNoMatchingPort
 	}
 
-	// Exact certainty only when service was identified deterministically and uniquely
-	isCertain := (targetService != "" && len(matched) == 1)
+	// Exact certainty only when service was identified deterministically and
+	// uniquely, and the declaration doesn't depend on variables whose value at
+	// "docker compose up" time we can't know.
+	isCertain := (targetService != "" && len(matched) == 1 && !matched[0].Interpolated)
 
 	var results []domain.ConfigEvidence
 	for _, m := range matched {
@@ -146,6 +157,7 @@ func (r *Resolver) FindPortEvidence(
 			Protocol:      m.Port.Protocol,
 			Original:      m.Original,
 			Evidence:      fmt.Sprintf("%s: %s", m.Service, m.Original),
+			Interpolated:  m.Interpolated,
 		})
 	}
 

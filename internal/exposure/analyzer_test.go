@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DhyaanKanoja11/Lantern/internal/compose"
 	"github.com/DhyaanKanoja11/Lantern/internal/docker"
 	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 	"github.com/DhyaanKanoja11/Lantern/internal/explain"
@@ -111,9 +112,13 @@ func (m *mockDocker) CheckDaemon(ctx context.Context) error {
 // Mock ComposeResolver
 type mockCompose struct {
 	evidences map[uint16]*domain.ConfigEvidence
+	err       error
 }
 
 func (m *mockCompose) ResolveAttribution(ctx context.Context, container *domain.Container, hostPort uint16) (*domain.ConfigEvidence, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
 	if ev, ok := m.evidences[hostPort]; ok {
 		return ev, nil
 	}
@@ -397,5 +402,25 @@ func TestAnalyzer_Why_PrefersMostExposedListener(t *testing.T) {
 	}
 	if exp.BindAddress != "192.168.1.20" {
 		t.Errorf("picked %q, want the LAN listener 192.168.1.20", exp.BindAddress)
+	}
+}
+
+func TestAnalyzer_Why_WarnsAboutUnresolvedInterpolation(t *testing.T) {
+	col := &mockCollector{
+		listeners: []domain.Listener{{Protocol: "tcp", Address: "0.0.0.0", Port: 5432}},
+	}
+	dock := &mockDocker{
+		available:  true,
+		containers: map[uint16]*domain.Container{5432: {ID: "c1", Name: "db"}},
+	}
+	comp := &mockCompose{err: compose.ErrUnresolvedInterpolation}
+	analyzer := NewAnalyzerWithDeps(col, nil, dock, comp, nil, explain.NewDefaultExplainer())
+
+	exp, err := analyzer.Why(context.Background(), 5432, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exp.Warnings) == 0 {
+		t.Fatal("expected a warning explaining why the compose line wasn't matched")
 	}
 }

@@ -58,3 +58,21 @@ func TestGenerateRecommendation_NoSuggestionForUnparseableOriginal(t *testing.T)
 		t.Fatalf("expected no recommendation for long syntax, got %+v", rec)
 	}
 }
+
+// Rewriting "${PORT:-80}:80" to a literal would throw away the variable, so
+// interpolated declarations never get an automatic suggestion.
+func TestGenerateRecommendation_NoSuggestionForInterpolatedPort(t *testing.T) {
+	exp := &domain.Exposure{
+		Port: 80,
+		Config: &domain.ConfigEvidence{
+			File:          "docker-compose.yml",
+			Original:      "${PORT:-80}:80",
+			HostPort:      80,
+			ContainerPort: 80,
+			Interpolated:  true,
+		},
+	}
+	if rec := GenerateRecommendation(exp, explain.RootCause{Type: explain.RootCauseComposePublishedPort}); rec != nil {
+		t.Fatalf("expected no recommendation, got %+v", rec)
+	}
+}

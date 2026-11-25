@@ -115,9 +115,17 @@ func (a *DefaultAnalyzer) Why(ctx context.Context, port uint16, projectDir strin
 
 	// Compose resolution
 	var configEvidence *domain.ConfigEvidence
+	var warnings []string
 	if container != nil && a.compose != nil {
-		if ce, err := a.compose.ResolveAttribution(ctx, container, port); err == nil && ce != nil {
+		ce, err := a.compose.ResolveAttribution(ctx, container, port)
+		switch {
+		case err == nil && ce != nil:
 			configEvidence = ce
+			if ce.Interpolated {
+				warnings = append(warnings, fmt.Sprintf("%s:%d uses variable interpolation (%s); the port was resolved from the current environment and .env, and 'lantern fix' won't edit this line automatically.", ce.File, ce.Line, ce.Original))
+			}
+		case errors.Is(err, compose.ErrUnresolvedInterpolation):
+			warnings = append(warnings, "A Compose port declaration for this service uses a variable that isn't set here (e.g. ${PORT}), so it can't be matched to this port. Set the variable or check the file by hand.")
 		}
 	}
 
@@ -148,6 +156,7 @@ func (a *DefaultAnalyzer) Why(ctx context.Context, port uint16, projectDir strin
 		Config:        configEvidence,
 		Interfaces:    ifaces,
 		Reachability:  reach,
+		Warnings:      warnings,
 	}
 
 	// Recommendation generation
