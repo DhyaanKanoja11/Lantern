@@ -310,3 +310,32 @@ func TestDefaultReclaimer_Apply_UnknownTarget_Rejection(t *testing.T) {
 		t.Errorf("expected unknown listener error message, got: %v", err)
 	}
 }
+
+// If Docker couldn't tell us which container owns the port, the listener is
+// still docker-proxy. Killing it breaks Docker networking, so refuse.
+func TestDefaultReclaimer_Plan_RefusesUnattributedDockerProxy(t *testing.T) {
+	cases := map[string]*domain.Exposure{
+		"process name": {
+			Port:     5432,
+			Process:  &domain.Process{PID: 1111, Name: "docker-proxy"},
+			Listener: domain.Listener{Port: 5432, PID: 1111},
+		},
+		"listener name only": {
+			Port:     5432,
+			Listener: domain.Listener{Port: 5432, PID: 1111, ProcessName: "docker-proxy"},
+		},
+		"command line path": {
+			Port:     5432,
+			Process:  &domain.Process{PID: 1111, CommandLine: "/usr/bin/docker-proxy -proto tcp -host-port 5432"},
+			Listener: domain.Listener{Port: 5432, PID: 1111},
+		},
+	}
+	for name, exp := range cases {
+		t.Run(name, func(t *testing.T) {
+			plan, err := NewDefaultReclaimer().Plan(context.Background(), exp)
+			if err == nil {
+				t.Fatalf("expected refusal, got plan %+v", plan)
+			}
+		})
+	}
+}
