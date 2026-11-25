@@ -290,17 +290,11 @@ func isAmbiguousListeners(listeners []domain.Listener) bool {
 	return false
 }
 
+// selectTargetListener picks the most exposed listener on the port. When the
+// same port is bound on loopback and on a LAN address, the LAN one is what
+// matters; reporting "localhost only" there would be wrong.
 func selectTargetListener(listeners []domain.Listener) domain.Listener {
-	if len(listeners) == 1 {
-		return listeners[0]
-	}
-	// Prefer IPv4 or non-loopback if available
-	for _, l := range listeners {
-		if !strings.HasPrefix(l.Address, "::") && l.Address != "::1" {
-			return l
-		}
-	}
-	return listeners[0]
+	return collector.MostExposed(listeners)
 }
 
 func formatScanReachability(reach domain.Reachability) string {

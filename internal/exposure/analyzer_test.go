@@ -379,3 +379,23 @@ func TestAnalyzer_ScanReport_DockerUnavailable(t *testing.T) {
 		t.Errorf("expected 'native' for node, got: %s", s2.TargetType)
 	}
 }
+
+// With an unprivileged run every PID is 0, so these aren't flagged as
+// ambiguous. We must then report the LAN-facing listener, not loopback.
+func TestAnalyzer_Why_PrefersMostExposedListener(t *testing.T) {
+	col := &mockCollector{
+		listeners: []domain.Listener{
+			{Protocol: "tcp", Address: "127.0.0.1", Port: 8080},
+			{Protocol: "tcp", Address: "192.168.1.20", Port: 8080},
+		},
+	}
+	analyzer := NewAnalyzerWithDeps(col, nil, nil, nil, nil, explain.NewDefaultExplainer())
+
+	exp, err := analyzer.Why(context.Background(), 8080, ".")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exp.BindAddress != "192.168.1.20" {
+		t.Errorf("picked %q, want the LAN listener 192.168.1.20", exp.BindAddress)
+	}
+}
