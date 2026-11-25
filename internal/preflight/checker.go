@@ -3,7 +3,6 @@ package preflight
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 
 	"github.com/DhyaanKanoja11/Lantern/internal/collector"
@@ -187,13 +186,7 @@ func (c *Checker) findNextAvailablePort(start uint16, listeners map[uint16]domai
 			candidate++
 			continue
 		}
-		// Probe locally to be certain candidate is free
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", candidate))
-		if err == nil {
-			_ = ln.Close()
-			return candidate
-		}
-		candidate++
+		return candidate
 	}
 	return 0
 }
