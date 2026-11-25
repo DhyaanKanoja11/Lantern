@@ -31,6 +31,18 @@ func TestClassifyIP_Loopback(t *testing.T) {
 	}
 }
 
+// Interface names are not a reliable loopback signal. Windows calls its
+// ethernet adapter "Local Area Connection" and Linux has lowpan0.
+func TestClassifyIP_LoNamePrefixIsNotLoopback(t *testing.T) {
+	for _, name := range []string{"Local Area Connection", "lowpan0", "lo"} {
+		t.Run(name, func(t *testing.T) {
+			if kind := ClassifyIP(net.ParseIP("192.168.1.20"), name, false); kind != "LAN" {
+				t.Errorf("192.168.1.20 on %q: got %s, want LAN", name, kind)
+			}
+		})
+	}
+}
+
 func TestClassifyIP_LAN(t *testing.T) {
 	tests := []struct {
 		name  string

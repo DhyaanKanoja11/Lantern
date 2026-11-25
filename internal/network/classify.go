@@ -32,7 +32,9 @@ func ClassifyIP(ip net.IP, ifaceName string, isLoopback bool) string {
 	}
 
 	// 1. Loopback
-	if isLoopback || ip.IsLoopback() || ifaceName == "lo" || strings.HasPrefix(strings.ToLower(ifaceName), "lo") {
+	// Trust the interface flag and the address itself, never the interface
+	// name: plenty of real NICs have names starting with "lo".
+	if isLoopback || ip.IsLoopback() {
 		return "LOOPBACK"
 	}
 
