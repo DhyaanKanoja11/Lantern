@@ -221,7 +221,7 @@ func (s *Server) listTools() []map[string]any {
 					},
 					"force": map[string]any{
 						"type":        "boolean",
-						"description": "Force kill if graceful shutdown fails",
+						"description": "Kill immediately (SIGKILL) without trying a graceful shutdown first. Leave false unless the graceful path already failed; it escalates on its own after a grace period.",
 					},
 				},
 				"required": []string{"port"},

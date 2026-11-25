@@ -34,7 +34,12 @@ docker-proxy and corrupt Docker networking state, Lantern is context-aware:
 - If the port is published by a Docker container, it stops the container cleanly.
 - If the port is bound by a native process, it terminates the process.
 
-Prompts for confirmation before taking action unless --force or --yes is provided.`,
+Prompts for confirmation before taking action unless --yes or --force is provided.
+
+--yes skips the prompt but still shuts things down gracefully: processes get
+SIGTERM and are only killed if they're still around after --timeout.
+--force skips the prompt and kills the process immediately (SIGKILL), with no
+chance to flush data. Avoid it for databases.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		portVal, err := strconv.ParseUint(args[0], 10, 32)
@@ -158,7 +163,8 @@ Prompts for confirmation before taking action unless --force or --yes is provide
 			timeout = 10 * time.Second
 		}
 
-		res, err := reclaimer.Apply(cmd.Context(), plan, skipPrompt, timeout)
+		// Only --force skips the graceful shutdown. --yes just means "don't ask".
+		res, err := reclaimer.Apply(cmd.Context(), plan, freeForceFlag, timeout)
 		if err != nil {
 			return err
 		}
@@ -169,8 +175,8 @@ Prompts for confirmation before taking action unless --force or --yes is provide
 }
 
 func init() {
-	freeCmd.Flags().BoolVarP(&freeForceFlag, "force", "f", false, "Force termination without interactive confirmation prompt")
-	freeCmd.Flags().BoolVarP(&freeYesFlag, "yes", "y", false, "Alias for --force")
+	freeCmd.Flags().BoolVarP(&freeForceFlag, "force", "f", false, "Skip the confirmation prompt and kill immediately (SIGKILL) instead of shutting down gracefully")
+	freeCmd.Flags().BoolVarP(&freeYesFlag, "yes", "y", false, "Skip the confirmation prompt; still shuts down gracefully")
 	freeCmd.Flags().BoolVar(&freeDryRunFlag, "dry-run", false, "Preview which container or process would be stopped without taking action")
 	freeCmd.Flags().DurationVar(&freeTimeoutFlag, "timeout", 10*time.Second, "Timeout for stopping container or terminating process")
 }

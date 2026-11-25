@@ -177,10 +177,11 @@ Stop this container? [y/N]: y
 [OK] Docker container "postgres-dev" stopped. Port 5432 is now free.
 ```
 
-Preview without taking action using `--dry-run`, or bypass prompts in scripts using `-f` / `--force`:
+Preview without taking action using `--dry-run`. In scripts, use `-y` / `--yes` to skip the prompt; the process still gets a graceful shutdown (SIGTERM, then SIGKILL after `--timeout`). `-f` / `--force` skips the prompt **and** kills immediately, which can lose unflushed data, so avoid it for databases:
 ```bash
 lantern free 5432 --dry-run
-lantern free 5432 -f
+lantern free 5432 -y
+lantern free 5432 -f   # immediate SIGKILL
 ```
 
 ---
@@ -473,7 +474,7 @@ npx -y @smithery/cli install lantern
 | :--- | :--- | :--- |
 | `lantern_scan` | *(none)* | Scans active TCP listeners on the host, returning structured process, container, and reachability classifications. |
 | `lantern_why` | `port` (int) | Traces causal exposure path for a port down to the exact `docker-compose.yml` service and line number. |
-| `lantern_free` | `port` (int), `force` (bool) | Safely reclaims an occupied port by cleanly stopping its Docker container or terminating its host process. |
+| `lantern_free` | `port` (int), `force` (bool) | Safely reclaims an occupied port by cleanly stopping its Docker container or terminating its host process. `force=true` kills immediately instead of shutting down gracefully. |
 | `lantern_preflight` | `file_path` (string) | Pre-inspects a Compose file to detect and prevent `EADDRINUSE` port collisions and wildcard exposures before container startup. |
 | `lantern_doctor` | *(none)* | Runs diagnostic environment readiness checks for socket collection and Docker connectivity. |
 
