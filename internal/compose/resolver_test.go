@@ -512,3 +512,62 @@ services:
 		t.Errorf("expected ErrAmbiguousAttribution for conflicting HostIP mappings, got %v", err)
 	}
 }
+
+// Docker >= 20.10 reports "5432:5432" as two bindings, one on 0.0.0.0 and one
+// on ::. That's a single wildcard publish, not two conflicting ones.
+func TestResolver_ResolveAttribution_DualStackWildcard(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	content := `
+services:
+  db:
+    ports:
+      - "5432:5432"
+`
+	if err := os.WriteFile(composePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	container := &domain.Container{
+		Labels: map[string]string{
+			"com.docker.compose.project.working_dir":  tempDir,
+			"com.docker.compose.project.config_files": composePath,
+			"com.docker.compose.service":              "db",
+		},
+		Ports: []domain.PortMapping{
+			{HostIP: "0.0.0.0", HostPort: 5432, ContainerPort: 5432, Protocol: "tcp"},
+			{HostIP: "::", HostPort: 5432, ContainerPort: 5432, Protocol: "tcp"},
+		},
+	}
+
+	evidence, err := NewDefaultResolver().ResolveAttribution(context.Background(), container, 5432)
+	if err != nil {
+		t.Fatalf("dual-stack wildcard should resolve, got %v", err)
+	}
+	if evidence.Line != 5 || evidence.Service != "db" {
+		t.Errorf("resolved to wrong declaration: %+v", evidence)
+	}
+}
+
+// A wildcard plus a specific address is still a real conflict.
+func TestResolver_ResolveAttribution_WildcardPlusSpecificIsAmbiguous(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte("services:\n  db:\n    ports:\n      - \"5432:5432\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	container := &domain.Container{
+		Labels: map[string]string{
+			"com.docker.compose.project.config_files": composePath,
+			"com.docker.compose.service":              "db",
+		},
+		Ports: []domain.PortMapping{
+			{HostIP: "::", HostPort: 5432, ContainerPort: 5432, Protocol: "tcp"},
+			{HostIP: "127.0.0.1", HostPort: 5432, ContainerPort: 5432, Protocol: "tcp"},
+		},
+	}
+	_, err := NewDefaultResolver().ResolveAttribution(context.Background(), container, 5432)
+	if !errors.Is(err, ErrAmbiguousAttribution) {
+		t.Errorf("expected ErrAmbiguousAttribution, got %v", err)
+	}
+}
