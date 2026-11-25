@@ -1,0 +1,105 @@
+name: 'Lantern Security & Preflight'
+description: 'Detect Docker Compose port conflicts, EADDRINUSE collisions, and wildcard 0.0.0.0 exposures in CI'
+author: 'Dhyaan Kanoja'
+branding:
+  icon: 'shield'
+  color: 'yellow'
+
+inputs:
+  command:
+    description: 'Lantern command to run: "preflight" (default) or "scan"'
+    required: false
+    default: 'preflight'
+  file:
+    description: 'Path to compose.yaml or docker-compose.yml (used for preflight)'
+    required: false
+    default: 'compose.yaml'
+  fail-on-wildcard:
+    description: 'Exit with error if 0.0.0.0 or :: wildcard exposures are found (used for scan)'
+    required: false
+    default: 'false'
+  ignore-ports:
+    description: 'Comma-separated ports to exempt from wildcard checks (e.g. "80,443")'
+    required: false
+    default: ''
+  version:
+    description: 'Version of Lantern to install and run'
+    required: false
+    default: 'v0.3.0'
+  flags:
+    description: 'Additional flags for the lantern command'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Lantern
+      shell: bash
+      run: |
+        VERSION="${{ inputs.version }}"
+        STRIPPED_VERSION="${VERSION#v}"
+        OS=$(echo "${{ runner.os }}" | tr '[:upper:]' '[:lower:]')
+        ARCH="${{ runner.arch }}"
+
+        case "$ARCH" in
+          X64)
+            TARGET_ARCH="amd64"
+            ;;
+          ARM64)
+            TARGET_ARCH="arm64"
+            ;;
+          *)
+            TARGET_ARCH="amd64"
+            ;;
+        esac
+
+        INSTALL_DIR="$RUNNER_TEMP/lantern-bin"
+        mkdir -p "$INSTALL_DIR"
+
+        if [ "$OS" = "windows" ]; then
+          ASSET_NAME="lantern_${STRIPPED_VERSION}_windows_${TARGET_ARCH}.zip"
+          URL="https://github.com/DhyaanKanoja11/Lantern/releases/download/${VERSION}/${ASSET_NAME}"
+          echo "Downloading Lantern from $URL"
+          curl -sSL -o "$RUNNER_TEMP/$ASSET_NAME" "$URL"
+          unzip -q -o "$RUNNER_TEMP/$ASSET_NAME" -d "$INSTALL_DIR"
+        else
+          ASSET_NAME="lantern_${STRIPPED_VERSION}_${OS}_${TARGET_ARCH}.tar.gz"
+          URL="https://github.com/DhyaanKanoja11/Lantern/releases/download/${VERSION}/${ASSET_NAME}"
+          echo "Downloading Lantern from $URL"
+          curl -sSL "$URL" | tar -xz -C "$INSTALL_DIR"
+        fi
+
+        chmod +x "$INSTALL_DIR/lantern"* 2>/dev/null || true
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+    - name: Run Lantern Check
+      shell: bash
+      run: |
+        CMD="${{ inputs.command }}"
+        EXTRA_FLAGS="${{ inputs.flags }}"
+
+        if [ "$CMD" = "scan" ]; then
+          SCAN_ARGS=""
+          if [ "${{ inputs.fail-on-wildcard }}" = "true" ]; then
+            SCAN_ARGS="$SCAN_ARGS --fail-on-wildcard"
+          fi
+          if [ -n "${{ inputs.ignore-ports }}" ]; then
+            SCAN_ARGS="$SCAN_ARGS --ignore-ports ${{ inputs.ignore-ports }}"
+          fi
+          echo "Executing: lantern scan $SCAN_ARGS $EXTRA_FLAGS"
+          lantern scan $SCAN_ARGS $EXTRA_FLAGS
+        else
+          COMPOSE_FILE="${{ inputs.file }}"
+          if [ ! -f "$COMPOSE_FILE" ]; then
+            if [ -f "docker-compose.yml" ]; then
+              COMPOSE_FILE="docker-compose.yml"
+            elif [ -f "compose.yml" ]; then
+              COMPOSE_FILE="compose.yml"
+            elif [ -f "docker-compose.yaml" ]; then
+              COMPOSE_FILE="docker-compose.yaml"
+            fi
+          fi
+          echo "Executing: lantern preflight $COMPOSE_FILE $EXTRA_FLAGS"
+          lantern preflight "$COMPOSE_FILE" $EXTRA_FLAGS
+        fi
