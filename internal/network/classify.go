@@ -167,9 +167,12 @@ func EvaluateReachability(bindAddr string, ifaces []domain.NetworkInterface) (do
 		var relevant []domain.NetworkInterface
 		var nonLoopback []domain.NetworkInterface
 
+		// A dual-stack :: socket is reachable on IPv4 interfaces as well.
+		dualStack := ipv6WildcardDualStack()
+
 		for _, iface := range active {
 			ip := net.ParseIP(iface.IP)
-			if ip != nil && ip.To4() == nil {
+			if ip != nil && (ip.To4() == nil || dualStack) {
 				relevant = append(relevant, iface)
 				if !iface.IsLoopback && iface.Kind != "LOOPBACK" {
 					nonLoopback = append(nonLoopback, iface)

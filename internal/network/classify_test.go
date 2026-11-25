@@ -287,3 +287,28 @@ func TestEvaluateReachability_MalformedAddress(t *testing.T) {
 		t.Errorf("expected %s for garbage address, got %s", StateUnresolved, reach2.State)
 	}
 }
+
+// On Linux a socket on :: also accepts IPv4 unless bindv6only=1, so a
+// listener on :: with only an IPv4 LAN address is still LAN reachable.
+func TestEvaluateReachability_IPv6WildcardIsDualStack(t *testing.T) {
+	orig := ipv6WildcardDualStack
+	defer func() { ipv6WildcardDualStack = orig }()
+
+	ifaces := []domain.NetworkInterface{
+		{Name: "lo", IP: "127.0.0.1", IsUp: true, IsLoopback: true, Kind: "LOOPBACK"},
+		{Name: "lo", IP: "::1", IsUp: true, IsLoopback: true, Kind: "LOOPBACK"},
+		{Name: "eth0", IP: "192.168.1.20", IsUp: true, Kind: "LAN"},
+	}
+
+	ipv6WildcardDualStack = func() bool { return true }
+	reach, _ := EvaluateReachability("::", ifaces)
+	if reach.State != StateLANReachable {
+		t.Errorf("dual-stack ::: got %s, want %s", reach.State, StateLANReachable)
+	}
+
+	ipv6WildcardDualStack = func() bool { return false }
+	reach, _ = EvaluateReachability("::", ifaces)
+	if reach.State != StateLoopbackOnly {
+		t.Errorf("v6only ::: got %s, want %s", reach.State, StateLoopbackOnly)
+	}
+}
