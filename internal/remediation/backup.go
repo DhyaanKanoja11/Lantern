@@ -39,6 +39,13 @@ func CreateBackup(filePath string) (string, error) {
 		return "", fmt.Errorf("failed to read original file for backup: %w", err)
 	}
 
+	return CreateBackupFromBytes(filePath, origBytes, fi)
+}
+
+// CreateBackupFromBytes writes origBytes as the backup for filePath, using
+// fi for permissions and ownership. Use this when the caller already holds
+// verified contents, so the backup is exactly what was checked.
+func CreateBackupFromBytes(filePath string, origBytes []byte, fi os.FileInfo) (string, error) {
 	backupPath, err := DetermineBackupPath(filePath)
 	if err != nil {
 		return "", err
@@ -69,6 +76,11 @@ func CreateBackup(filePath string) (string, error) {
 	if err := f.Close(); err != nil {
 		_ = os.Remove(backupPath)
 		return "", fmt.Errorf("failed to close backup file: %w", err)
+	}
+
+	if err := copyOwner(backupPath, fi); err != nil {
+		_ = os.Remove(backupPath)
+		return "", fmt.Errorf("failed to preserve owner on backup: %w", err)
 	}
 
 	// Verify backup matches original byte-for-byte

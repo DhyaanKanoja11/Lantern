@@ -16,6 +16,10 @@ var (
 	ErrComposeFileUnreadable = errors.New("compose file unreadable")
 	// ErrInvalidYAML indicates the Compose file contains malformed YAML syntax.
 	ErrInvalidYAML = errors.New("invalid compose yaml")
+	// ErrUnresolvedInterpolation means a candidate declaration uses a
+	// variable (e.g. "${PORT}:80") that couldn't be resolved, so we can't
+	// tell whether it's the one publishing the port.
+	ErrUnresolvedInterpolation = errors.New("compose port uses variable interpolation that could not be resolved")
 	// ErrNoMatchingPort indicates no Compose port declaration matched the requested port.
 	ErrNoMatchingPort = errors.New("no matching compose port declaration")
 	// ErrAmbiguousAttribution indicates multiple services or declarations ambiguously claim the port.

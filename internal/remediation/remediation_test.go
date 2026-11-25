@@ -771,3 +771,112 @@ func TestDefaultRemediator_Apply_MissingFingerprint(t *testing.T) {
 		t.Fatal("expected error applying plan with missing fingerprint, got nil")
 	}
 }
+
+// A range mapping must never be collapsed into a single port, even if the
+// caller hands us a bad replacement string.
+func TestModifyComposeBytes_RefusesToCollapseRange(t *testing.T) {
+	data := []byte(`services:
+  web:
+    image: nginx
+    ports:
+      - "8080-8085:80-85"
+`)
+	_, err := ModifyComposeBytes(data, "docker-compose.yml", "web", 5, 8082, "127.0.0.1:8082:80")
+	if err == nil {
+		t.Fatal("expected the edit to be refused, it would drop five mappings")
+	}
+
+	out, err := ModifyComposeBytes(data, "docker-compose.yml", "web", 5, 8082, "127.0.0.1:8080-8085:80-85")
+	if err != nil {
+		t.Fatalf("range-preserving edit should be fine: %v", err)
+	}
+	if !strings.Contains(string(out), `- "127.0.0.1:8080-8085:80-85"`) {
+		t.Fatalf("unexpected output:\n%s", out)
+	}
+}
+
+func TestModifyComposeBytes_RefusesToChangeProtocol(t *testing.T) {
+	data := []byte(`services:
+  dns:
+    image: coredns
+    ports:
+      - "53:53/udp"
+`)
+	if _, err := ModifyComposeBytes(data, "docker-compose.yml", "dns", 5, 53, "127.0.0.1:53:53"); err == nil {
+		t.Fatal("expected refusal: udp mapping would silently become tcp")
+	}
+}
+
+func TestModifyComposeBytes_RefusesInterpolatedLine(t *testing.T) {
+	data := []byte(`services:
+  web:
+    ports:
+      - "${WEB_PORT_LANTERN_UNSET:-8080}:80"
+`)
+	if _, err := ModifyComposeBytes(data, "docker-compose.yml", "web", 4, 8080, "127.0.0.1:8080:80"); err == nil {
+		t.Fatal("expected refusal for an interpolated declaration")
+	}
+}
+
+// Something edits the file right after the fingerprint check passed. The old
+// code read the file again for the backup and for the edit, so it would back
+// up and rewrite content nobody reviewed. We must work from the bytes we
+// verified and refuse to write once the file no longer matches them.
+func TestDefaultRemediator_Apply_ChangeAfterFingerprintCheck(t *testing.T) {
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+	original := "services:\n  db:\n    ports:\n      - \"5432:5432\"\n"
+	if err := os.WriteFile(composePath, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	fp, err := ComputeFingerprint(composePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sneaky := "services:\n  db:\n    ports:\n      - \"5432:5432\"\n    privileged: true\n"
+	testHookAfterVerify = func() { _ = os.WriteFile(composePath, []byte(sneaky), 0644) }
+	defer func() { testHookAfterVerify = nil }()
+
+	plan := &domain.Remediation{
+		Status:      domain.RemediationSupported,
+		Type:        "bind_localhost",
+		File:        composePath,
+		Line:        4,
+		Service:     "db",
+		Before:      "5432:5432",
+		After:       "127.0.0.1:5432:5432",
+		Fingerprint: fp,
+	}
+	_, err = NewDefaultRemediator().Apply(context.Background(), plan)
+	if !errors.Is(err, ErrFileChanged) {
+		t.Fatalf("expected ErrFileChanged, got %v", err)
+	}
+	onDisk, _ := os.ReadFile(composePath)
+	if string(onDisk) != sneaky {
+		t.Errorf("file should have been left alone, got:\n%s", onDisk)
+	}
+	if bak, err := os.ReadFile(composePath + ".lantern.bak"); err == nil && string(bak) != original {
+		t.Errorf("backup holds unverified content:\n%s", bak)
+	}
+}
+
+func TestFindTargetPort_UsesPortToDisambiguate(t *testing.T) {
+	data := []byte(`services:
+  web:
+    ports:
+      - "80:80"
+      - "443:443"
+`)
+	loc, err := FindTargetPort(data, "web", 0, 443)
+	if err != nil {
+		t.Fatalf("port 443 identifies a single declaration, got %v", err)
+	}
+	if loc.Line != 5 || loc.HostPort != 443 || loc.ContainerPort != 443 {
+		t.Errorf("unexpected location %+v", loc)
+	}
+
+	if _, err := FindTargetPort(data, "web", 4, 443); err == nil {
+		t.Error("line 4 publishes 80, not 443; expected a refusal")
+	}
+}

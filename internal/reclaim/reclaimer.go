@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -122,6 +123,13 @@ func (r *DefaultReclaimer) Plan(ctx context.Context, exp *domain.Exposure) (*Rec
 		targetPID = exp.Listener.PID
 	}
 
+	if isDockerProxy(exp) {
+		// The port is Docker's, but we couldn't work out which container
+		// published it (daemon unreachable, ambiguous mapping...). Killing
+		// docker-proxy itself would break Docker networking, so stop here.
+		return nil, fmt.Errorf("port %d is held by docker-proxy but the owning container could not be identified; stop the container with docker instead", exp.Port)
+	}
+
 	if targetPID > 0 {
 		plan.TargetType = TargetProcess
 		plan.PID = targetPID
@@ -220,4 +228,22 @@ func (r *DefaultReclaimer) Apply(ctx context.Context, plan *ReclaimPlan, force b
 	default:
 		return nil, fmt.Errorf("unsupported reclaim target type: %q", plan.TargetType)
 	}
+}
+
+// isDockerProxy reports whether the listener looks like Docker's userland proxy.
+func isDockerProxy(exp *domain.Exposure) bool {
+	names := []string{exp.Listener.ProcessName}
+	if exp.Process != nil {
+		names = append(names, exp.Process.Name)
+		if fields := strings.Fields(exp.Process.CommandLine); len(fields) > 0 {
+			names = append(names, fields[0])
+		}
+	}
+	for _, n := range names {
+		n = strings.ToLower(strings.TrimSuffix(filepath.Base(n), ".exe"))
+		if n == "docker-proxy" {
+			return true
+		}
+	}
+	return false
 }

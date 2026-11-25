@@ -414,3 +414,45 @@ func TestFreeCommand_UnknownTarget(t *testing.T) {
 		t.Errorf("expected sudo suggestion, got: %s", out)
 	}
 }
+
+// --yes only skips the prompt. It must still go through the graceful
+// SIGTERM-then-wait path; only --force kills straight away.
+func TestFreeCommand_YesFlagDoesNotForceKill(t *testing.T) {
+	resetFreeFlags()
+	defer resetFreeFlags()
+
+	oldAnalyzer := freeAnalyzer
+	oldReclaimer := freeReclaimer
+	defer func() {
+		freeAnalyzer = oldAnalyzer
+		freeReclaimer = oldReclaimer
+	}()
+
+	freeAnalyzer = &mockFreeAnalyzer{exposure: &domain.Exposure{Port: 5432}}
+	mockRec := &mockReclaimer{
+		plan: &reclaim.ReclaimPlan{Port: 5432, TargetType: reclaim.TargetProcess, PID: 4242, ProcessName: "postgres"},
+		result: &reclaim.ReclaimResult{
+			Port:        5432,
+			TargetType:  reclaim.TargetProcess,
+			Description: "Process \"postgres\" (PID 4242) terminated",
+		},
+	}
+	freeReclaimer = mockRec
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetArgs([]string{"free", "5432", "--yes"})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(buf.String(), "Terminate this process?") {
+		t.Error("--yes should skip the prompt")
+	}
+	if mockRec.appliedPlan == nil {
+		t.Fatal("reclaimer was never applied")
+	}
+	if mockRec.forced {
+		t.Error("--yes must not force kill; that's what --force is for")
+	}
+}

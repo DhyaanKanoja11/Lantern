@@ -14,6 +14,14 @@ type ExtractedEvidence struct {
 	Service  string
 	Port     ParsedPort
 	Original string
+
+	// Interpolated is set when the declaration uses ${VAR} / $VAR. Port
+	// then holds the value resolved from the environment and .env, which
+	// may not be what the running container was started with.
+	Interpolated bool
+	// Unresolved is set when an interpolated declaration couldn't be
+	// resolved (variable unset, no default). Port is empty in that case.
+	Unresolved bool
 }
 
 // ParseComposeFile parses a Compose YAML file into ExtractedEvidence slice using yaml.Node AST.
@@ -29,6 +37,7 @@ func ParseComposeFile(filePath string, data []byte) ([]ExtractedEvidence, error)
 	}
 
 	var results []ExtractedEvidence
+	lookup := envLookup(filePath)
 
 	// A YAML file can contain one or multiple documents
 	docs := []*yaml.Node{&root}
@@ -83,6 +92,10 @@ func ParseComposeFile(filePath string, data []byte) ([]ExtractedEvidence, error)
 
 						switch itemNode.Kind {
 						case yaml.ScalarNode:
+							if hasInterpolation(itemNode.Value) {
+								results = append(results, interpolatedShort(filePath, line, serviceName, itemNode.Value, lookup))
+								continue
+							}
 							parsed, err := parsePortShort(itemNode.Value)
 							if err != nil {
 								// Skip malformed port declaration safely without crashing
@@ -97,6 +110,10 @@ func ParseComposeFile(filePath string, data []byte) ([]ExtractedEvidence, error)
 							})
 
 						case yaml.MappingNode:
+							if ev, ok := interpolatedLong(filePath, line, serviceName, itemNode, lookup); ok {
+								results = append(results, ev)
+								continue
+							}
 							parsed, err := parsePortLong(itemNode)
 							if err != nil {
 								// Skip malformed long syntax safely
@@ -117,4 +134,76 @@ func ParseComposeFile(filePath string, data []byte) ([]ExtractedEvidence, error)
 	}
 
 	return results, nil
+}
+
+// interpolatedShort turns a short-syntax declaration containing variables
+// into evidence. It is always reported, even when it can't be resolved, so
+// callers can tell the user why a port didn't match instead of dropping it.
+func interpolatedShort(file string, line int, service, raw string, lookup lookupFunc) ExtractedEvidence {
+	ev := ExtractedEvidence{
+		File:         file,
+		Line:         line,
+		Service:      service,
+		Original:     raw,
+		Interpolated: true,
+		Unresolved:   true,
+		Port:         ParsedPort{Original: raw},
+	}
+	resolved, ok := interpolate(raw, lookup)
+	if !ok {
+		return ev
+	}
+	parsed, err := parsePortShort(resolved)
+	if err != nil {
+		return ev
+	}
+	parsed.Original = raw
+	ev.Port = *parsed
+	ev.Unresolved = false
+	return ev
+}
+
+// interpolatedLong does the same for long syntax. ok is false when the
+// mapping has no variables and should go through the normal path.
+func interpolatedLong(file string, line int, service string, node *yaml.Node, lookup lookupFunc) (ExtractedEvidence, bool) {
+	uses := false
+	for _, c := range node.Content {
+		if c.Kind == yaml.ScalarNode && hasInterpolation(c.Value) {
+			uses = true
+		}
+	}
+	if !uses {
+		return ExtractedEvidence{}, false
+	}
+
+	ev := ExtractedEvidence{
+		File:         file,
+		Line:         line,
+		Service:      service,
+		Interpolated: true,
+		Unresolved:   true,
+	}
+
+	copyNode := *node
+	copyNode.Content = make([]*yaml.Node, len(node.Content))
+	resolvedAll := true
+	for i, c := range node.Content {
+		cc := *c
+		if cc.Kind == yaml.ScalarNode && hasInterpolation(cc.Value) {
+			v, ok := interpolate(cc.Value, lookup)
+			if !ok {
+				resolvedAll = false
+			}
+			cc.Value = v
+		}
+		copyNode.Content[i] = &cc
+	}
+	if resolvedAll {
+		if parsed, err := parsePortLong(&copyNode); err == nil {
+			ev.Port = *parsed
+			ev.Unresolved = false
+		}
+	}
+	ev.Original = ev.Port.Original
+	return ev, true
 }

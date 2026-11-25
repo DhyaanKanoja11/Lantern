@@ -256,3 +256,26 @@ func TestDeduplicateAndSort(t *testing.T) {
 		t.Errorf("expected port 5432 process 'postgres', got %q", result[2].ProcessName)
 	}
 }
+
+// ss prints interface-scoped binds with a %zone suffix, e.g. systemd-resolved
+// on 127.0.0.53%lo:53 or dnsmasq on 0.0.0.0%docker0:53.
+func TestSplitAddressPort_StripsZone(t *testing.T) {
+	cases := map[string]string{
+		"0.0.0.0%docker0:53": "0.0.0.0",
+		"127.0.0.53%lo:53":   "127.0.0.53",
+		"[fe80::1%eth0]:546": "fe80::1",
+		"[fe80::1]%eth0:546": "fe80::1",
+		"[::]%wg0:51820":     "::",
+		"*%lo:631":           "0.0.0.0",
+	}
+	for in, want := range cases {
+		host, _, err := SplitAddressPort(in)
+		if err != nil {
+			t.Errorf("%s: %v", in, err)
+			continue
+		}
+		if host != want {
+			t.Errorf("%s: got host %q, want %q", in, host, want)
+		}
+	}
+}

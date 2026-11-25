@@ -49,20 +49,7 @@ func (c *windowsCollector) FindListenerByPort(ctx context.Context, port uint16) 
 		return nil, err
 	}
 
-	var match *domain.Listener
-	for i := range listeners {
-		if listeners[i].Port == port {
-			if match == nil {
-				match = &listeners[i]
-				continue
-			}
-			// Prefer non-loopback / wildcard address over 127.0.0.1
-			if match.Address == "127.0.0.1" && listeners[i].Address != "127.0.0.1" {
-				match = &listeners[i]
-			}
-		}
-	}
-
+	match := findMostExposedOnPort(listeners, port)
 	if match == nil {
 		return nil, fmt.Errorf("no listener found for port %d", port)
 	}

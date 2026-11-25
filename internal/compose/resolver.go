@@ -65,6 +65,7 @@ func (r *Resolver) FindPortEvidence(
 	}
 
 	var matched []ExtractedEvidence
+	sawUnresolved := false
 	readSuccessCount := 0
 
 	for _, file := range files {
@@ -82,6 +83,11 @@ func (r *Resolver) FindPortEvidence(
 		for _, decl := range declarations {
 			// 1. Service matching
 			if targetService != "" && !strings.EqualFold(decl.Service, targetService) {
+				continue
+			}
+
+			if decl.Unresolved {
+				sawUnresolved = true
 				continue
 			}
 
@@ -126,11 +132,16 @@ func (r *Resolver) FindPortEvidence(
 	}
 
 	if len(matched) == 0 {
+		if sawUnresolved {
+			return nil, ErrUnresolvedInterpolation
+		}
 		return nil, ErrNoMatchingPort
 	}
 
-	// Exact certainty only when service was identified deterministically and uniquely
-	isCertain := (targetService != "" && len(matched) == 1)
+	// Exact certainty only when service was identified deterministically and
+	// uniquely, and the declaration doesn't depend on variables whose value at
+	// "docker compose up" time we can't know.
+	isCertain := (targetService != "" && len(matched) == 1 && !matched[0].Interpolated)
 
 	var results []domain.ConfigEvidence
 	for _, m := range matched {
@@ -146,6 +157,7 @@ func (r *Resolver) FindPortEvidence(
 			Protocol:      m.Port.Protocol,
 			Original:      m.Original,
 			Evidence:      fmt.Sprintf("%s: %s", m.Service, m.Original),
+			Interpolated:  m.Interpolated,
 		})
 	}
 
@@ -154,26 +166,31 @@ func (r *Resolver) FindPortEvidence(
 
 // ResolveAttribution satisfies the ComposeResolver interface, returning unique evidence or error if ambiguous.
 func (r *Resolver) ResolveAttribution(ctx context.Context, container *domain.Container, hostPort uint16) (*domain.ConfigEvidence, error) {
-	// Look up Docker container port mappings for hostPort to retrieve HostIP
-	var candidateIP string
-	var conflictingIPs bool
+	// Look up Docker container port mappings for hostPort to retrieve HostIP.
+	ips := map[string]bool{}
 	if container != nil {
 		for _, m := range container.Ports {
-			if m.HostPort == hostPort {
-				cleanIP := strings.Trim(strings.TrimSpace(m.HostIP), "[]")
-				if cleanIP != "" {
-					if candidateIP == "" {
-						candidateIP = cleanIP
-					} else if !strings.EqualFold(candidateIP, cleanIP) {
-						conflictingIPs = true
-					}
-				}
+			if m.HostPort != hostPort {
+				continue
+			}
+			if cleanIP := strings.ToLower(strings.Trim(strings.TrimSpace(m.HostIP), "[]")); cleanIP != "" {
+				ips[cleanIP] = true
 			}
 		}
 	}
 
-	// Preserve ambiguity if Docker metadata contains multiple conflicting HostIPs for this hostPort
-	if conflictingIPs {
+	var candidateIP string
+	switch {
+	case len(ips) == 1:
+		for ip := range ips {
+			candidateIP = ip
+		}
+	case len(ips) == 2 && ips["0.0.0.0"] && ips["::"]:
+		// Docker publishes an unconstrained "5432:5432" on both 0.0.0.0 and
+		// ::. That's one wildcard binding, so don't constrain the address.
+		candidateIP = ""
+	case len(ips) > 1:
+		// Genuinely different host IPs for the same port; don't guess.
 		return nil, ErrAmbiguousAttribution
 	}
 
