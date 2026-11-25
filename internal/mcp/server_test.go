@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -119,7 +121,7 @@ func TestServer_ToolsList(t *testing.T) {
 		names[tool["name"].(string)] = true
 	}
 
-	expected := []string{"lantern_scan", "lantern_why", "lantern_free", "lantern_doctor"}
+	expected := []string{"lantern_scan", "lantern_why", "lantern_free", "lantern_doctor", "lantern_preflight"}
 	for _, exp := range expected {
 		if !names[exp] {
 			t.Errorf("missing expected tool: %s", exp)
@@ -260,6 +262,33 @@ func TestServer_ToolsCall_Doctor(t *testing.T) {
 	res := resp.Result.(toolCallResult)
 	if res.IsError || !strings.Contains(res.Content[0].Text, "OS") {
 		t.Errorf("unexpected doctor output: %s", res.Content[0].Text)
+	}
+}
+
+func TestServer_ToolsCall_Preflight(t *testing.T) {
+	srv := NewServer("0.3.0", nil, nil, nil)
+	tmpDir := t.TempDir()
+	filePath := tmpDir + "/docker-compose.yml"
+	content := `
+services:
+  web:
+    image: nginx
+    ports:
+      - "127.0.0.1:8080:80"
+`
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := fmt.Sprintf(`{"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"lantern_preflight","arguments":{"file_path":%q}}}`, filePath)
+	resp := srv.HandleMessage(context.Background(), []byte(req))
+	if resp == nil || resp.Error != nil {
+		t.Fatalf("unexpected error: %v", resp.Error)
+	}
+
+	res := resp.Result.(toolCallResult)
+	if res.IsError || !strings.Contains(res.Content[0].Text, `"passed": true`) {
+		t.Errorf("expected passing preflight in MCP, got: %s", res.Content[0].Text)
 	}
 }
 

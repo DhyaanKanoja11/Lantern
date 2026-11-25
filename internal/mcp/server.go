@@ -12,6 +12,7 @@ import (
 
 	"github.com/DhyaanKanoja11/Lantern/internal/exposure"
 	"github.com/DhyaanKanoja11/Lantern/internal/output"
+	"github.com/DhyaanKanoja11/Lantern/internal/preflight"
 	"github.com/DhyaanKanoja11/Lantern/internal/reclaim"
 )
 
@@ -234,6 +235,20 @@ func (s *Server) listTools() []map[string]any {
 				"properties": map[string]any{},
 			},
 		},
+		{
+			"name":        "lantern_preflight",
+			"description": "Inspect a Docker Compose file against active host listeners and internal port declarations before container startup to detect and prevent EADDRINUSE collisions.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"file_path": map[string]any{
+						"type":        "string",
+						"description": "Path to compose.yaml or docker-compose.yml file",
+					},
+				},
+				"required": []string{"file_path"},
+			},
+		},
 	}
 }
 
@@ -277,6 +292,8 @@ func (s *Server) handleToolCall(ctx context.Context, id json.RawMessage, paramsR
 		text, isError = s.executeFree(ctx, call.Arguments)
 	case "lantern_doctor":
 		text, isError = s.executeDoctor(ctx)
+	case "lantern_preflight":
+		text, isError = s.executePreflight(ctx, call.Arguments)
 	default:
 		return &Response{
 			JSONRPC: "2.0",
@@ -421,4 +438,26 @@ func (s *Server) executeDoctor(ctx context.Context) (string, bool) {
 	}
 
 	return string(data), false
+}
+
+func (s *Server) executePreflight(ctx context.Context, argsRaw json.RawMessage) (string, bool) {
+	var args struct {
+		FilePath string `json:"file_path"`
+	}
+	if err := json.Unmarshal(argsRaw, &args); err != nil || args.FilePath == "" {
+		return "Invalid arguments: must provide file_path string", true
+	}
+
+	checker := preflight.NewChecker()
+	report, err := checker.CheckFile(ctx, args.FilePath)
+	if err != nil {
+		return fmt.Sprintf("Preflight check failed: %v", err), true
+	}
+
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("Failed to marshal report: %v", err), true
+	}
+
+	return string(data), !report.Passed
 }

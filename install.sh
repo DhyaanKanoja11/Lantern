@@ -12,7 +12,7 @@
 set -eu
 
 REPO="DhyaanKanoja11/Lantern"
-FALLBACK_VERSION="v0.2.1"
+FALLBACK_VERSION="v0.3.0"
 
 # Colors for terminal output
 BOLD="\033[1m"
@@ -72,7 +72,7 @@ case "$OS" in
     darwin) OS="darwin" ;;
     *)
         log_error "Unsupported operating system: $OS"
-        log_warn "Lantern requires Linux or WSL2 for native socket inspection. Windows/macOS support is diagnostic-only."
+        log_warn "Lantern shell installer supports Linux and macOS. On Windows, use install.ps1 or Scoop."
         exit 1
         ;;
 esac

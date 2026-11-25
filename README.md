@@ -228,6 +228,12 @@ brew upgrade lantern
 
 ### Option C: Windows Package Managers
 
+#### 1-Line PowerShell Installer
+The fastest way to install or update Lantern on Windows:
+```powershell
+irm https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.ps1 | iex
+```
+
 #### Scoop
 Install via the official Scoop bucket:
 ```powershell
@@ -344,6 +350,7 @@ docker compose down
 | `lantern scan` | Discovers active TCP listeners. Supports output formats (`text`, `json`, `sarif`), live watch mode (`-w`), team policy (`.lantern.yaml`), and CI enforcement (`--fail-on-wildcard`). | `lantern scan --format sarif` |
 | `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Supports `--format json` / `--format sarif`. | `lantern why 5432 --json` |
 | `lantern free <port>` | Context-aware port freeing: cleanly stops Docker containers or terminates native processes occupying a port. Aliased as `lantern kill`. | `lantern free 5432` |
+| `lantern preflight [file]` | Preflight collision checker: detects port conflicts and wildcard exposures before running `docker compose up`. | `lantern preflight compose.yaml --json` |
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
 | `lantern mcp` | Starts the Model Context Protocol (MCP) stdio server for AI agents (Claude Code, Cursor, Windsurf). | `lantern mcp` |
 | `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
@@ -467,6 +474,7 @@ npx -y @smithery/cli install lantern
 | `lantern_scan` | *(none)* | Scans active TCP listeners on the host, returning structured process, container, and reachability classifications. |
 | `lantern_why` | `port` (int) | Traces causal exposure path for a port down to the exact `docker-compose.yml` service and line number. |
 | `lantern_free` | `port` (int), `force` (bool) | Safely reclaims an occupied port by cleanly stopping its Docker container or terminating its host process. |
+| `lantern_preflight` | `file_path` (string) | Pre-inspects a Compose file to detect and prevent `EADDRINUSE` port collisions and wildcard exposures before container startup. |
 | `lantern_doctor` | *(none)* | Runs diagnostic environment readiness checks for socket collection and Docker connectivity. |
 
 
