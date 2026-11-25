@@ -51,25 +51,32 @@ func (r *DefaultRemediator) Apply(ctx context.Context, plan *domain.Remediation)
 		return nil, fmt.Errorf("cannot apply remediation: plan has no recorded file fingerprint")
 	}
 
-	if err := VerifyFingerprint(plan.File, plan.Fingerprint); err != nil {
+	// Read the file once and do everything from these bytes: verify, back
+	// up, edit. Reading it again for each step would let a concurrent edit
+	// slip in between the check and the write.
+	data, fi, err := readVerified(plan.File, plan.Fingerprint)
+	if err != nil {
 		return nil, err
 	}
-
-	fi, err := os.Stat(plan.File)
-	if err != nil {
-		return nil, fmt.Errorf("target file not found: %w", err)
+	if testHookAfterVerify != nil {
+		testHookAfterVerify()
 	}
 
-	// 2. File verified unchanged -> create byte-verified backup
-	backupPath, err := CreateBackup(plan.File)
+	modifiedBytes, err := ModifyComposeBytes(data, plan.File, plan.Service, plan.Line, 0, plan.After)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute safe modification: %w", err)
+	}
+
+	backupPath, err := CreateBackupFromBytes(plan.File, data, fi)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create backup before modification: %w", err)
 	}
 
-	// 2. Compute exact AST-guided modified bytes
-	modifiedBytes, err := ApplyComposeFix(plan.File, plan.Service, plan.Line, 0, plan.After)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compute safe modification: %w", err)
+	// Last check right before replacing the file. This can't close the
+	// window completely without locking, but it shrinks it to a rename.
+	if err := VerifyFingerprint(plan.File, plan.Fingerprint); err != nil {
+		_ = os.Remove(backupPath)
+		return nil, err
 	}
 
 	// 3. Atomically write to target file
@@ -128,4 +135,26 @@ func (r *DefaultRemediator) Apply(ctx context.Context, plan *domain.Remediation)
 		AfterState:  fmt.Sprintf("%s\n    Local machine only", afterDesc),
 		BackupPath:  backupPath,
 	}, nil
+}
+
+// testHookAfterVerify lets tests change the file between verification and write.
+var testHookAfterVerify func()
+
+// readVerified reads filePath once and checks the bytes against the expected
+// fingerprint.
+func readVerified(filePath string, expected *domain.FileFingerprint) ([]byte, os.FileInfo, error) {
+	fi, err := os.Stat(filePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", ErrFileChanged, err)
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", ErrFileChanged, err)
+	}
+	got := ComputeBytesFingerprint(filePath, int64(len(data)), data)
+	if got.Size != expected.Size || got.SHA256 != expected.SHA256 {
+		return nil, nil, fmt.Errorf("%w: expected size=%d sha256=%s, found size=%d sha256=%s",
+			ErrFileChanged, expected.Size, expected.SHA256, got.Size, got.SHA256)
+	}
+	return data, fi, nil
 }

@@ -817,3 +817,46 @@ func TestModifyComposeBytes_RefusesInterpolatedLine(t *testing.T) {
 		t.Fatal("expected refusal for an interpolated declaration")
 	}
 }
+
+// Something edits the file right after the fingerprint check passed. The old
+// code read the file again for the backup and for the edit, so it would back
+// up and rewrite content nobody reviewed. We must work from the bytes we
+// verified and refuse to write once the file no longer matches them.
+func TestDefaultRemediator_Apply_ChangeAfterFingerprintCheck(t *testing.T) {
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+	original := "services:\n  db:\n    ports:\n      - \"5432:5432\"\n"
+	if err := os.WriteFile(composePath, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	fp, err := ComputeFingerprint(composePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sneaky := "services:\n  db:\n    ports:\n      - \"5432:5432\"\n    privileged: true\n"
+	testHookAfterVerify = func() { _ = os.WriteFile(composePath, []byte(sneaky), 0644) }
+	defer func() { testHookAfterVerify = nil }()
+
+	plan := &domain.Remediation{
+		Status:      domain.RemediationSupported,
+		Type:        "bind_localhost",
+		File:        composePath,
+		Line:        4,
+		Service:     "db",
+		Before:      "5432:5432",
+		After:       "127.0.0.1:5432:5432",
+		Fingerprint: fp,
+	}
+	_, err = NewDefaultRemediator().Apply(context.Background(), plan)
+	if !errors.Is(err, ErrFileChanged) {
+		t.Fatalf("expected ErrFileChanged, got %v", err)
+	}
+	onDisk, _ := os.ReadFile(composePath)
+	if string(onDisk) != sneaky {
+		t.Errorf("file should have been left alone, got:\n%s", onDisk)
+	}
+	if bak, err := os.ReadFile(composePath + ".lantern.bak"); err == nil && string(bak) != original {
+		t.Errorf("backup holds unverified content:\n%s", bak)
+	}
+}
