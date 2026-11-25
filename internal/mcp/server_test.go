@@ -358,3 +358,20 @@ func TestServer_ServeStream(t *testing.T) {
 		t.Errorf("expected ID 2, got %s", resp2.ID)
 	}
 }
+
+// Requests without an id are notifications: JSON-RPC says the server must not
+// reply. tools/call in particular must not run, since it can stop containers
+// or kill processes and the caller would never see the result.
+func TestServer_NotificationsGetNoResponse(t *testing.T) {
+	srv := NewServer("0.2.3", nil, nil, nil)
+	for _, msg := range []string{
+		`{"jsonrpc":"2.0","method":"ping"}`,
+		`{"jsonrpc":"2.0","method":"tools/list"}`,
+		`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"lantern_free","arguments":{"port":5432}}}`,
+		`{"jsonrpc":"2.0","id":null,"method":"tools/call","params":{"name":"lantern_scan"}}`,
+	} {
+		if resp := srv.HandleMessage(context.Background(), []byte(msg)); resp != nil {
+			t.Errorf("%s: expected no response, got %+v", msg, resp)
+		}
+	}
+}

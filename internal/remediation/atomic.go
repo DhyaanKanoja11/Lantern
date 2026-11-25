@@ -8,7 +8,17 @@ import (
 
 // AtomicWrite safely replaces filePath with data via a temporary file in the same directory.
 // Ensures that failures never leave a truncated or partially written file.
+//
+// If filePath is a symlink the target is rewritten and the link is left in
+// place. The original file's owner is carried over to the new file.
 func AtomicWrite(filePath string, data []byte, perm os.FileMode) error {
+	if resolved, err := filepath.EvalSymlinks(filePath); err == nil {
+		filePath = resolved
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to resolve %s: %w", filePath, err)
+	}
+	origInfo, statErr := os.Stat(filePath)
+
 	dir := filepath.Dir(filePath)
 	tmpFile, err := os.CreateTemp(dir, ".lantern-fix-*.tmp")
 	if err != nil {
@@ -41,6 +51,12 @@ func AtomicWrite(filePath string, data []byte, perm os.FileMode) error {
 	if perm != 0 {
 		if err := os.Chmod(tmpPath, perm); err != nil {
 			return fmt.Errorf("failed to set permissions on temporary file: %w", err)
+		}
+	}
+
+	if statErr == nil {
+		if err := copyOwner(tmpPath, origInfo); err != nil {
+			return fmt.Errorf("failed to preserve owner of %s: %w", filePath, err)
 		}
 	}
 

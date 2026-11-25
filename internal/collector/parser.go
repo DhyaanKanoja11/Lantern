@@ -16,6 +16,11 @@ import (
 // NormalizeAddress cleans and standardizes IPv4 and IPv6 representation.
 func NormalizeAddress(addr string) string {
 	addr = strings.TrimSpace(addr)
+	// Drop any interface scope ("0.0.0.0%docker0", "[fe80::1%eth0]",
+	// "[::]%wg0"). It names the interface, not part of the address.
+	if i := strings.Index(addr, "%"); i != -1 {
+		addr = addr[:i]
+	}
 	addr = strings.Trim(addr, "[]")
 
 	if addr == "" || addr == "*" || addr == "0.0.0.0" {

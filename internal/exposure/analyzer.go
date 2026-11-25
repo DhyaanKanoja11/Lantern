@@ -115,9 +115,17 @@ func (a *DefaultAnalyzer) Why(ctx context.Context, port uint16, projectDir strin
 
 	// Compose resolution
 	var configEvidence *domain.ConfigEvidence
+	var warnings []string
 	if container != nil && a.compose != nil {
-		if ce, err := a.compose.ResolveAttribution(ctx, container, port); err == nil && ce != nil {
+		ce, err := a.compose.ResolveAttribution(ctx, container, port)
+		switch {
+		case err == nil && ce != nil:
 			configEvidence = ce
+			if ce.Interpolated {
+				warnings = append(warnings, fmt.Sprintf("%s:%d uses variable interpolation (%s); the port was resolved from the current environment and .env, and 'lantern fix' won't edit this line automatically.", ce.File, ce.Line, ce.Original))
+			}
+		case errors.Is(err, compose.ErrUnresolvedInterpolation):
+			warnings = append(warnings, "A Compose port declaration for this service uses a variable that isn't set here (e.g. ${PORT}), so it can't be matched to this port. Set the variable or check the file by hand.")
 		}
 	}
 
@@ -148,6 +156,7 @@ func (a *DefaultAnalyzer) Why(ctx context.Context, port uint16, projectDir strin
 		Config:        configEvidence,
 		Interfaces:    ifaces,
 		Reachability:  reach,
+		Warnings:      warnings,
 	}
 
 	// Recommendation generation
@@ -290,17 +299,11 @@ func isAmbiguousListeners(listeners []domain.Listener) bool {
 	return false
 }
 
+// selectTargetListener picks the most exposed listener on the port. When the
+// same port is bound on loopback and on a LAN address, the LAN one is what
+// matters; reporting "localhost only" there would be wrong.
 func selectTargetListener(listeners []domain.Listener) domain.Listener {
-	if len(listeners) == 1 {
-		return listeners[0]
-	}
-	// Prefer IPv4 or non-loopback if available
-	for _, l := range listeners {
-		if !strings.HasPrefix(l.Address, "::") && l.Address != "::1" {
-			return l
-		}
-	}
-	return listeners[0]
+	return collector.MostExposed(listeners)
 }
 
 func formatScanReachability(reach domain.Reachability) string {

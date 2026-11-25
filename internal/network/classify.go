@@ -32,7 +32,9 @@ func ClassifyIP(ip net.IP, ifaceName string, isLoopback bool) string {
 	}
 
 	// 1. Loopback
-	if isLoopback || ip.IsLoopback() || ifaceName == "lo" || strings.HasPrefix(strings.ToLower(ifaceName), "lo") {
+	// Trust the interface flag and the address itself, never the interface
+	// name: plenty of real NICs have names starting with "lo".
+	if isLoopback || ip.IsLoopback() {
 		return "LOOPBACK"
 	}
 
@@ -165,9 +167,12 @@ func EvaluateReachability(bindAddr string, ifaces []domain.NetworkInterface) (do
 		var relevant []domain.NetworkInterface
 		var nonLoopback []domain.NetworkInterface
 
+		// A dual-stack :: socket is reachable on IPv4 interfaces as well.
+		dualStack := ipv6WildcardDualStack()
+
 		for _, iface := range active {
 			ip := net.ParseIP(iface.IP)
-			if ip != nil && ip.To4() == nil {
+			if ip != nil && (ip.To4() == nil || dualStack) {
 				relevant = append(relevant, iface)
 				if !iface.IsLoopback && iface.Kind != "LOOPBACK" {
 					nonLoopback = append(nonLoopback, iface)

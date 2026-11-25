@@ -132,6 +132,19 @@ func (s *Server) HandleMessage(ctx context.Context, raw []byte) *Response {
 	// Notifications have no ID (or null ID)
 	isNotification := len(req.ID) == 0 || string(req.ID) == "null"
 
+	// Notifications never get a reply. The only ones we act on are the
+	// notifications/* messages; anything else sent without an id (say a
+	// tools/call that would kill a process) is dropped, since the client
+	// would have no way of learning what happened.
+	if isNotification {
+		if req.Method == "notifications/initialized" {
+			s.mu.Lock()
+			s.initialized = true
+			s.mu.Unlock()
+		}
+		return nil
+	}
+
 	switch req.Method {
 	case "initialize":
 		res := map[string]any{
@@ -171,9 +184,6 @@ func (s *Server) HandleMessage(ctx context.Context, raw []byte) *Response {
 		return s.handleToolCall(ctx, req.ID, req.Params)
 
 	default:
-		if isNotification {
-			return nil
-		}
 		return &Response{
 			JSONRPC: "2.0",
 			ID:      req.ID,
@@ -221,7 +231,7 @@ func (s *Server) listTools() []map[string]any {
 					},
 					"force": map[string]any{
 						"type":        "boolean",
-						"description": "Force kill if graceful shutdown fails",
+						"description": "Kill immediately (SIGKILL) without trying a graceful shutdown first. Leave false unless the graceful path already failed; it escalates on its own after a grace period.",
 					},
 				},
 				"required": []string{"port"},

@@ -16,9 +16,12 @@ type ParsedPort struct {
 	HostIP        string // e.g. "127.0.0.1", "0.0.0.0", "::", "::1", or "" for default binding
 	HostPortStart uint16
 	HostPortEnd   uint16
-	ContainerPort uint16
-	Protocol      string // "tcp", "udp"
-	Original      string
+	ContainerPort uint16 // first port of the container range
+	// ContainerPortEnd is the last port of the container range. Equal to
+	// ContainerPort for a single port.
+	ContainerPortEnd uint16
+	Protocol         string // "tcp", "udp"
+	Original         string
 }
 
 // IsEphemeral returns true if no host port was declared (container port only).
@@ -175,11 +178,12 @@ func parsePortShort(raw string) (*ParsedPort, error) {
 	}
 
 	if containerPortPart != "" {
-		start, _, err := parsePortRange(containerPortPart)
+		start, end, err := parsePortRange(containerPortPart)
 		if err != nil {
 			return nil, fmt.Errorf("invalid container port %q in %q: %w", containerPortPart, orig, err)
 		}
 		parsed.ContainerPort = start
+		parsed.ContainerPortEnd = end
 	} else {
 		return nil, fmt.Errorf("missing container port in %q", orig)
 	}
@@ -257,11 +261,12 @@ func parsePortLong(node *yaml.Node) (*ParsedPort, error) {
 		Protocol: proto,
 	}
 
-	cStart, _, err := parsePortRange(targetStr)
+	cStart, cEnd, err := parsePortRange(targetStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid target port %q: %w", targetStr, err)
 	}
 	parsed.ContainerPort = cStart
+	parsed.ContainerPortEnd = cEnd
 
 	if publishedStr != "" {
 		hStart, hEnd, err := parsePortRange(publishedStr)
@@ -286,4 +291,65 @@ func parsePortLong(node *yaml.Node) (*ParsedPort, error) {
 	parsed.Original = strings.Join(origParts, ", ")
 
 	return parsed, nil
+}
+
+// BindToLoopback rewrites a short-syntax port declaration so it only listens
+// on 127.0.0.1, keeping everything else exactly as written: port ranges, the
+// container side and any /proto suffix. An existing host IP (0.0.0.0, [::], ...)
+// is replaced.
+//
+// It returns an error for anything it can't rewrite confidently, e.g. long
+// syntax or declarations it fails to parse. Callers should treat that as
+// "don't suggest a fix".
+func BindToLoopback(original string) (string, error) {
+	parsed, err := parsePortShort(original)
+	if err != nil {
+		return "", err
+	}
+
+	raw := strings.TrimSpace(original)
+	protoSuffix := ""
+	if idx := strings.LastIndex(raw, "/"); idx != -1 {
+		protoSuffix = raw[idx:]
+		raw = raw[:idx]
+	}
+
+	// Strip the host IP, if any, so only "hostPort:containerPort" (or just
+	// "containerPort") is left.
+	if parsed.HostIP != "" {
+		if strings.HasPrefix(raw, "[") {
+			raw = raw[strings.Index(raw, "]")+1:]
+		} else {
+			raw = raw[len(parsed.HostIP):]
+		}
+		raw = strings.TrimPrefix(raw, ":")
+	}
+
+	var portsPart string
+	if parsed.IsEphemeral() {
+		// "127.0.0.1::80" keeps the host port ephemeral.
+		portsPart = ":" + raw
+	} else {
+		portsPart = raw
+	}
+
+	rewritten := "127.0.0.1:" + portsPart + protoSuffix
+
+	// Sanity check: the result must parse back to the same ports.
+	check, err := parsePortShort(rewritten)
+	if err != nil {
+		return "", fmt.Errorf("rewritten declaration %q does not parse: %w", rewritten, err)
+	}
+	if check.HostPortStart != parsed.HostPortStart || check.HostPortEnd != parsed.HostPortEnd ||
+		check.ContainerPort != parsed.ContainerPort || check.ContainerPortEnd != parsed.ContainerPortEnd ||
+		check.Protocol != parsed.Protocol {
+		return "", fmt.Errorf("rewriting %q to %q would change its ports", original, rewritten)
+	}
+	return rewritten, nil
+}
+
+// ParsePortShort parses a Compose short-syntax port string. Variables
+// (${VAR}) are not expanded.
+func ParsePortShort(raw string) (*ParsedPort, error) {
+	return parsePortShort(raw)
 }

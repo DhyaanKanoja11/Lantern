@@ -13,4 +13,7 @@ type ConfigEvidence struct {
 	ContainerPort uint16 `json:"container_port,omitempty"`
 	Protocol      string `json:"protocol,omitempty"`
 	Original      string `json:"original,omitempty"`
+	// Interpolated means the declaration uses ${VAR}; ports were resolved
+	// from the current environment and the line is never auto-fixed.
+	Interpolated bool `json:"interpolated,omitempty"`
 }
