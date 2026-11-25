@@ -51,7 +51,7 @@ If you are a developer using Docker Compose, we invite you to participate in our
 ### Prerequisites
 
 - **Go 1.22+**: Required for building and testing.
-- **Operating System**: Linux (kernel 3.10+) or WSL2 (Windows Subsystem for Linux 2) for full socket and process inspection features. Windows and macOS compile cleanly with stub collectors for diagnostic commands.
+- **Operating System**: Linux (kernel 3.10+), macOS (12+), or Windows 10/11. Native socket discovery and process attribution are fully implemented across all three platforms. WSL2 is also supported on Windows.
 - **Docker & Docker Compose** (Optional): Useful for running and testing container and Compose correlation.
 
 ### Building from Source

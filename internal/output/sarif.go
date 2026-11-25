@@ -23,7 +23,7 @@ type SarifFormatter struct {
 // NewSarifFormatter creates a new SarifFormatter with semantic version metadata.
 func NewSarifFormatter(version string) *SarifFormatter {
 	if version == "" {
-		version = "0.2.1"
+		version = "0.3.0"
 	}
 	return &SarifFormatter{toolVersion: version}
 }

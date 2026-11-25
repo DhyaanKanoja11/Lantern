@@ -204,7 +204,7 @@ The script automatically:
 
 To install a specific version:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | LANTERN_VERSION=v0.2.1 bash
+curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | LANTERN_VERSION=v0.3.0 bash
 ```
 
 To uninstall:
@@ -421,7 +421,7 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/DhyaanKanoja11/Lantern
-    rev: v0.2.1
+    rev: v0.3.0
     hooks:
       - id: lantern-scan
         args: ["--fail-on-wildcard", "--ignore-ports", "80,443"]
@@ -572,6 +572,10 @@ GOOS=linux GOARCH=arm64 go build ./cmd/lantern
 GOOS=windows GOARCH=amd64 go build ./cmd/lantern
 GOOS=darwin GOARCH=arm64 go build ./cmd/lantern
 ```
+
+### Contributing
+
+Contributions of all skill levels are welcome! Check out [`CONTRIBUTING.md`](CONTRIBUTING.md) for local environment setup, architecture guidelines, and our [open Good First Issues](https://github.com/DhyaanKanoja11/Lantern/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
 
 ---
 

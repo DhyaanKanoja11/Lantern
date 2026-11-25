@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
 PackageIdentifier: DhyaanKanoja11.Lantern
-PackageVersion: 0.2.1
+PackageVersion: 0.3.0
 PackageLocale: en-US
 Publisher: Dhyaan Kanoja
 PublisherUrl: https://github.com/DhyaanKanoja11
@@ -20,6 +20,6 @@ Tags:
   - ports
   - networking
   - cli
-ReleaseDate: 2026-11-21
+ReleaseDate: 2026-11-25
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0
