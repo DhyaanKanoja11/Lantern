@@ -14,6 +14,10 @@ on:
       - 'docs/**'
       - 'LICENSE'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -30,7 +34,7 @@ jobs:
         with:
           go-version: '1.22'
           check-latest: true
-          cache: false
+          cache: true
 
       - name: Verify Formatting (gofmt)
         run: |
@@ -43,14 +47,15 @@ jobs:
           fi
           echo "gofmt verification passed."
 
-      - name: Verify Go Module Tidy
+      - name: Verify Go Module Tidy & Integrity
         run: |
           go mod tidy
           if ! git diff --exit-code go.mod go.sum; then
             echo "::error::go.mod or go.sum is not tidy. Run 'go mod tidy' and commit changes."
             exit 1
           fi
-          echo "go mod tidy verification passed."
+          go mod verify
+          echo "go mod verify passed."
 
   test:
     name: Test (${{ matrix.os }}, Go ${{ matrix.go-version }})
@@ -70,7 +75,7 @@ jobs:
           - os: ubuntu-latest
             go-version: '1.23'
             race: true
-          # macOS: Apple Silicon runner on Go 1.23 (Go 1.22 has known Mach-O LC_UUID bug with -race on macOS 14)
+          # macOS: Apple Silicon runner on Go 1.23
           - os: macos-latest
             go-version: '1.23'
             race: true
@@ -90,7 +95,7 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
           check-latest: true
-          cache: false
+          cache: true
 
       - name: Run Tests
         run: |
@@ -112,3 +117,14 @@ jobs:
           ./lantern doctor || true
           ./lantern fix --help
           ./lantern scan --help
+          ./lantern preflight --help
+          ./lantern completion --help
+
+      - name: Emit Test Coverage Summary
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.23'
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total: | awk '{print $3}')
+          echo "### Test Suite & Invariant Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Coverage**: \`$COVERAGE\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Race Detector**: Enabled" >> $GITHUB_STEP_SUMMARY
+          echo "- **OS / Architecture**: \`${{ matrix.os }} / Go ${{ matrix.go-version }}\`" >> $GITHUB_STEP_SUMMARY

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.4.0] - 2026-11-26
+
+### Added
+- **Native Shell Auto-Completion (`lantern completion`)**: Added shell completion generator supporting `bash`, `zsh`, `fish`, and `powershell` with hermetic unit tests.
+- **Compose Override File Auto-Merging (`lantern preflight`)**: Added automatic discovery and merge of sibling Compose override files (`docker-compose.override.yml`, `compose.override.yml`), support for multiple file path arguments, and accurate collision source attribution.
+- **Official GitHub Marketplace Composite Action (`action.yml`)**: Added reusable GitHub Action enabling 1-step Compose preflight checks and wildcard security audits in CI workflows.
+- **Enhanced Reachability Explanation Diagnostics**: Improved socket attribution and causal explanation lineage in `lantern why`.
+
+---
+
 ## [v0.3.0] - 2026-11-25
 
 ### Added

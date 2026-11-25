@@ -1,0 +1,84 @@
+name: Triage
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+  issues:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+  issues: write
+  contents: read
+
+jobs:
+  pr-lint:
+    name: PR Validation & Conventional Commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR Title (Conventional Commits & Zero Emojis)
+        shell: bash
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "Validating PR title: $TITLE"
+          
+          # 1. Conventional Commit regex
+          CONVENTIONAL_REGEX="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9_-]+\))?: .{1,100}$"
+          if [[ ! "$TITLE" =~ $CONVENTIONAL_REGEX ]]; then
+            echo "::error::PR title does not follow Conventional Commits specification."
+            echo "Expected format: <type>(<scope>): <summary>"
+            echo "Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+            echo "Example: feat(preflight): support compose override files"
+            exit 1
+          fi
+
+          # 2. Zero-emoji check
+          if python3 -c "import sys, re; s = sys.argv[1]; emojis = re.findall(r'[\U00010000-\U0010ffff]', s); sys.exit(1 if emojis else 0)" "$TITLE"; then
+            echo "PR title is clean (zero emojis)."
+          else
+            echo "::error::PR title contains emojis. Lantern enforces a zero-emoji policy across all code and metadata."
+            exit 1
+          fi
+
+      - name: Security Sensitive Path Detection
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CHANGED_FILES=$(gh pr view "$PR_NUMBER" --json files --jq '.files[].path')
+          SECURITY_SENSITIVE=0
+          
+          for file in $CHANGED_FILES; do
+            if [[ "$file" =~ ^internal/remediation/ ]] || [[ "$file" =~ ^internal/collector/ ]] || [[ "$file" =~ ^\.github/ ]]; then
+              SECURITY_SENSITIVE=1
+              echo "Security-critical path touched: $file"
+            fi
+          done
+
+          if [ "$SECURITY_SENSITIVE" -eq 1 ]; then
+            echo "Applying security-review label..."
+            gh pr edit "$PR_NUMBER" --add-label "security-review" || true
+          fi
+
+  issue-triage:
+    name: Issue Label Automation
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-Label Issue
+        shell: bash
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LOWER_TITLE=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]')
+          if [[ "$LOWER_TITLE" =~ bug|error|crash|fail|panic ]]; then
+            gh issue edit "$ISSUE_NUMBER" --add-label "bug" || true
+          elif [[ "$LOWER_TITLE" =~ feat|feature|enhancement|support ]]; then
+            gh issue edit "$ISSUE_NUMBER" --add-label "enhancement" || true
+          fi

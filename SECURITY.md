@@ -4,11 +4,13 @@
 
 We provide security updates and bug fixes for the following versions:
 
-| Version | Supported          |
-| :------ | :----------------- |
-| v0.2.x  | :white_check_mark: |
-| v0.1.x  | :white_check_mark: |
-| < v0.1  | :x:                |
+| Version | Supported |
+| :------ | :-------- |
+| v0.4.x  | Yes       |
+| v0.3.x  | Yes       |
+| v0.2.x  | Yes       |
+| v0.1.x  | No        |
+| < v0.1  | No        |
 
 ---
 

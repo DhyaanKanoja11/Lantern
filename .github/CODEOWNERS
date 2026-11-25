@@ -1,0 +1,8 @@
+# Global repository owner
+* @DhyaanKanoja11
+
+# CI/CD and Security-critical workflows
+/.github/ @DhyaanKanoja11
+/internal/remediation/ @DhyaanKanoja11
+/internal/collector/ @DhyaanKanoja11
+/tests/integration/ @DhyaanKanoja11
