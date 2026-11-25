@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/DhyaanKanoja11/Lantern/internal/preflight"
 	"github.com/spf13/cobra"
@@ -15,10 +17,14 @@ var (
 )
 
 var preflightCmd = &cobra.Command{
-	Use:   "preflight [path/to/compose.yaml]",
+	Use:   "preflight [path/to/compose.yaml ...]",
 	Short: "Detect port clashes and wildcard exposures before running docker compose up",
-	Long: `Lantern Preflight inspects your Docker Compose file against active host listening
+	Long: `Lantern Preflight inspects your Docker Compose file(s) against active host listening
 sockets and internal port declarations before containers start.
+
+When a single file is provided or auto-discovered, any sibling override file
+(such as docker-compose.override.yml) in the same directory is automatically
+merged. Pass multiple file paths explicitly to audit a custom file stack.
 
 Prevents "bind: address already in use" (EADDRINUSE) failures and detects silent wildcard
 (0.0.0.0) exposures before running docker compose up.
@@ -27,13 +33,15 @@ Exit Codes:
   0: All clear (no collisions detected)
   1: File or syntax error
   2: Port collision detected (address already in use)`,
-	Args: cobra.MaximumNArgs(1),
+	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		filePath := ""
-		if len(args) > 0 {
-			filePath = args[0]
-		} else {
+		var report *preflight.Report
+		var err error
+
+		switch len(args) {
+		case 0:
 			// Auto-discover in current directory
+			filePath := ""
 			candidates := []string{
 				"docker-compose.yml",
 				"docker-compose.yaml",
@@ -49,9 +57,12 @@ Exit Codes:
 			if filePath == "" {
 				return fmt.Errorf("no compose file specified and none found in current directory (looked for docker-compose.yml, compose.yaml)")
 			}
+			report, err = preflightChecker.CheckFile(cmd.Context(), filePath)
+		case 1:
+			report, err = preflightChecker.CheckFile(cmd.Context(), args[0])
+		default:
+			report, err = preflightChecker.CheckFiles(cmd.Context(), args...)
 		}
-
-		report, err := preflightChecker.CheckFile(cmd.Context(), filePath)
 		if err != nil {
 			return err
 		}
@@ -75,13 +86,22 @@ Exit Codes:
 }
 
 func renderPreflightReport(cmd *cobra.Command, r *preflight.Report) {
-	fmt.Fprintf(cmd.OutOrStdout(), "Lantern Preflight: %s\n", r.FilePath)
+	multiFile := len(r.Files) > 1
+	headerTarget := r.FilePath
+	if multiFile {
+		headerTarget = strings.Join(r.Files, ", ")
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Lantern Preflight: %s\n", headerTarget)
 	fmt.Fprintf(cmd.OutOrStdout(), "Analyzed %d declared port mapping(s).\n\n", r.TotalPorts)
 
 	if len(r.Collisions) > 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "[COLLISION DETECTED] %d port conflict(s) will block startup:\n", len(r.Collisions))
 		for _, c := range r.Collisions {
-			fmt.Fprintf(cmd.OutOrStdout(), "  - Port %d (%s, line %d):\n", c.Port, c.Service, c.Line)
+			loc := fmt.Sprintf("line %d", c.Line)
+			if multiFile && c.File != "" {
+				loc = fmt.Sprintf("%s:%d", filepath.Base(c.File), c.Line)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "  - Port %d (%s, %s):\n", c.Port, c.Service, loc)
 			fmt.Fprintf(cmd.OutOrStdout(), "      Conflict: %s\n", c.OccupiedBy)
 			if c.SuggestedPort > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "      Suggestion: change to port %d\n", c.SuggestedPort)
@@ -93,7 +113,11 @@ func renderPreflightReport(cmd *cobra.Command, r *preflight.Report) {
 	if len(r.Wildcards) > 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "[EXPOSURE WARNING] %d port(s) bind to wildcard (0.0.0.0):\n", len(r.Wildcards))
 		for _, w := range r.Wildcards {
-			fmt.Fprintf(cmd.OutOrStdout(), "  - %s (line %d): %s -> recommend %s\n", w.Service, w.Line, w.Original, w.SuggestedFix)
+			loc := fmt.Sprintf("line %d", w.Line)
+			if multiFile && w.File != "" {
+				loc = fmt.Sprintf("%s:%d", filepath.Base(w.File), w.Line)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "  - %s (%s): %s -> recommend %s\n", w.Service, loc, w.Original, w.SuggestedFix)
 		}
 		fmt.Fprintln(cmd.OutOrStdout())
 	}

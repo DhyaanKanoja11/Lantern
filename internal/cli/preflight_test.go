@@ -122,3 +122,55 @@ func TestPreflightCmd_NoFileFound(t *testing.T) {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
+
+func TestPreflightCmd_MultipleFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	basePath := filepath.Join(tmpDir, "docker-compose.yml")
+	overridePath := filepath.Join(tmpDir, "docker-compose.staging.yml")
+
+	baseContent := `
+services:
+  web:
+    image: nginx
+    ports:
+      - "127.0.0.1:18080:80"
+`
+	overrideContent := `
+services:
+  api:
+    image: node
+    ports:
+      - "127.0.0.1:18081:3000"
+`
+	if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(overridePath, []byte(overrideContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"preflight", basePath, overridePath})
+
+	defer func() {
+		preflightJSONFlag = false
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected multi-file preflight to pass, got error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Analyzed 2 declared port mapping(s).") {
+		t.Errorf("expected 2 analyzed ports in output, got: %s", out)
+	}
+	if !strings.Contains(out, "[OK] All ports are available on the host") {
+		t.Errorf("expected [OK] banner, got: %s", out)
+	}
+}

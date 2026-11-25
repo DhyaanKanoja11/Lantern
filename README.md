@@ -376,7 +376,7 @@ docker compose down
 | `lantern scan` | Discovers active TCP listeners. Supports output formats (`text`, `json`, `sarif`), live watch mode (`-w`), team policy (`.lantern.yaml`), and CI enforcement (`--fail-on-wildcard`). | `lantern scan --format sarif` |
 | `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Supports `--format json` / `--format sarif`. | `lantern why 5432 --json` |
 | `lantern free <port>` | Context-aware port freeing: cleanly stops Docker containers or terminates native processes occupying a port. Aliased as `lantern kill`. | `lantern free 5432` |
-| `lantern preflight [file]` | Preflight collision checker: detects port conflicts and wildcard exposures before running `docker compose up`. | `lantern preflight compose.yaml --json` |
+| `lantern preflight [file ...]` | Preflight collision checker: detects port conflicts and wildcard exposures before running `docker compose up`. Automatically merges sibling `docker-compose.override.yml` files or accepts multiple Compose files. | `lantern preflight compose.yaml compose.prod.yaml --json` |
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
 | `lantern mcp` | Starts the Model Context Protocol (MCP) stdio server for AI agents (Claude Code, Cursor, Windsurf). | `lantern mcp` |
 | `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
