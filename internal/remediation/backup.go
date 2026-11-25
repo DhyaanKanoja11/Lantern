@@ -71,6 +71,11 @@ func CreateBackup(filePath string) (string, error) {
 		return "", fmt.Errorf("failed to close backup file: %w", err)
 	}
 
+	if err := copyOwner(backupPath, fi); err != nil {
+		_ = os.Remove(backupPath)
+		return "", fmt.Errorf("failed to preserve owner on backup: %w", err)
+	}
+
 	// Verify backup matches original byte-for-byte
 	backupBytes, err := os.ReadFile(backupPath)
 	if err != nil {
