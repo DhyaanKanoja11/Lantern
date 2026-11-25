@@ -9,7 +9,7 @@ import (
 
 // Release metadata variables populated at build time via -ldflags.
 var (
-	Version = "v0.2.3"
+	Version = "v0.3.0"
 	Commit  = "none"
 	Date    = "unknown"
 )

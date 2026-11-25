@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.3.0] - 2026-11-25
+
+### Added
+- **Native Model Context Protocol (MCP) Server**: Added `lantern mcp` stdio command implementing the JSON-RPC 2.0 / MCP stdio protocol standard. Allows autonomous AI coding agents (Claude Code, Cursor, Windsurf, Claude Desktop) to natively invoke `lantern_scan`, `lantern_why`, `lantern_free`, and `lantern_doctor`.
+- **Smithery Registry Support**: Added `smithery.yaml` configuration for 1-click MCP server indexing and deployment via `@smithery/cli`.
+- **Context-Aware Port Reclaiming (`lantern free` / `lantern kill`)**: Safe port reclaimer that checks if an occupied port is published by a Docker container and cleanly stops it via Docker Engine API before falling back to native host process termination.
+- **Cross-Platform Native Socket Discovery (macOS & Windows)**: Added zero-dependency native socket and process discovery for Windows (`netstat -ano` + `tasklist` CSV parsing) and macOS (`lsof -iTCP -sTCP:LISTEN` + `ps` attribution).
+- **Environment Diagnostics Upgrade (`lantern doctor`)**: Upgraded doctor probes to dynamically validate platform-native socket inspection utilities across Linux (`ss`), macOS (`lsof`), and Windows (`netstat`).
+
+---
+
 ## [v0.2.3] - 2026-11-24
 
 ### Added
