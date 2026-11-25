@@ -7,7 +7,11 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"runtime"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/DhyaanKanoja11/Lantern/internal/collector"
 	"github.com/DhyaanKanoja11/Lantern/internal/docker"
@@ -150,31 +154,10 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 		}
 	}
 
-	// 4. Docker CLI and Daemon
-	if dockerPath, err := exec.LookPath("docker"); err == nil {
-		correlator := docker.NewDefaultCorrelator()
-		if correlator.IsAvailable(ctx) {
-			checks = append(checks, DoctorCheck{
-				Name:    "Docker Environment",
-				Status:  "OK",
-				Message: fmt.Sprintf("Docker CLI (%s) and daemon reachable", dockerPath),
-			})
-		} else {
-			checks = append(checks, DoctorCheck{
-				Name:    "Docker Environment",
-				Status:  "WARN",
-				Message: fmt.Sprintf("Docker CLI found (%s), but daemon is not accessible", dockerPath),
-			})
-		}
-	} else {
-		checks = append(checks, DoctorCheck{
-			Name:    "Docker Environment",
-			Status:  "WARN",
-			Message: "Docker CLI not found in PATH (container correlation will be skipped)",
-		})
-	}
+	// 5. Container Engine (Docker / Podman)
+	checks = append(checks, checkContainerRuntime(ctx, defaultDoctorDeps()))
 
-	// 5. Network Interface Enumeration
+	// 6. Network Interface Enumeration
 	if ifaces, err := net.Interfaces(); err == nil && len(ifaces) > 0 {
 		checks = append(checks, DoctorCheck{
 			Name:    "Network Interfaces",
@@ -189,7 +172,7 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 		})
 	}
 
-	// 6. Listener Collection Functional Check
+	// 7. Listener Collection Functional Check
 	col := collector.NewDefaultCollector()
 	if _, err := col.CollectListeners(ctx); err == nil {
 		checks = append(checks, DoctorCheck{
@@ -206,6 +189,214 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 	}
 
 	return checks
+}
+
+type doctorDeps struct {
+	lookPath      func(string) (string, error)
+	isDockerAvail func(context.Context) bool
+	probePodman   func(context.Context, string) bool
+	statPath      func(string) (os.FileInfo, error)
+	getenv        func(string) string
+	getuid        func() int
+	userHomeDir   func() (string, error)
+	goos          string
+}
+
+func defaultDoctorDeps() doctorDeps {
+	return doctorDeps{
+		lookPath: exec.LookPath,
+		isDockerAvail: func(ctx context.Context) bool {
+			return docker.NewDefaultCorrelator().IsAvailable(ctx)
+		},
+		probePodman: defaultPodmanProbe,
+		statPath:    os.Stat,
+		getenv:      os.Getenv,
+		getuid:      os.Getuid,
+		userHomeDir: os.UserHomeDir,
+		goos:        runtime.GOOS,
+	}
+}
+
+func defaultPodmanProbe(ctx context.Context, podmanPath string) bool {
+	probeCtx := ctx
+	var cancel context.CancelFunc
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		probeCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+	}
+	cmd := exec.CommandContext(probeCtx, podmanPath, "ps", "-q")
+	return cmd.Run() == nil
+}
+
+func checkContainerRuntime(ctx context.Context, deps doctorDeps) DoctorCheck {
+	if deps.lookPath != nil {
+		if dockerPath, err := deps.lookPath("docker"); err == nil {
+			if deps.isDockerAvail != nil && deps.isDockerAvail(ctx) {
+				return DoctorCheck{
+					Name:    "Docker Environment",
+					Status:  "OK",
+					Message: fmt.Sprintf("Docker CLI (%s) and daemon reachable", dockerPath),
+				}
+			}
+			return DoctorCheck{
+				Name:    "Docker Environment",
+				Status:  "WARN",
+				Message: fmt.Sprintf("Docker CLI found (%s), but daemon is not accessible", dockerPath),
+			}
+		}
+
+		if podmanPath, err := deps.lookPath("podman"); err == nil {
+			sockPath, sockFound := findPodmanSocket(deps)
+			engineReachable := deps.probePodman != nil && deps.probePodman(ctx, podmanPath)
+
+			switch {
+			case sockFound && engineReachable:
+				return DoctorCheck{
+					Name:    "Container Environment",
+					Status:  "OK",
+					Message: fmt.Sprintf("Podman container engine detected (%s, socket: %s)", podmanPath, sockPath),
+				}
+			case !sockFound && engineReachable:
+				msg := fmt.Sprintf("Podman container engine detected (%s) and CLI reachable (no Podman socket found)", podmanPath)
+				if deps.goos == "windows" {
+					msg = fmt.Sprintf("Podman container engine detected (%s) and CLI reachable", podmanPath)
+				}
+				return DoctorCheck{
+					Name:    "Container Environment",
+					Status:  "OK",
+					Message: msg,
+				}
+			case sockFound && !engineReachable:
+				return DoctorCheck{
+					Name:    "Container Environment",
+					Status:  "WARN",
+					Message: fmt.Sprintf("Podman CLI found (%s) and socket exists (%s), but engine is not accessible", podmanPath, sockPath),
+				}
+			default:
+				return DoctorCheck{
+					Name:    "Container Environment",
+					Status:  "WARN",
+					Message: fmt.Sprintf("Podman CLI found (%s), but no Podman socket found and engine is not accessible", podmanPath),
+				}
+			}
+		}
+	}
+
+	return DoctorCheck{
+		Name:    "Container Environment",
+		Status:  "WARN",
+		Message: "Neither Docker nor Podman CLI found in PATH (container correlation will be skipped)",
+	}
+}
+
+func parseUnixSocketHost(val string) string {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return ""
+	}
+	if strings.HasPrefix(val, "unix:///") {
+		return strings.TrimPrefix(val, "unix://")
+	}
+	if strings.HasPrefix(val, "/") {
+		return val
+	}
+	return ""
+}
+
+func podmanSocketCandidates(deps doctorDeps) []string {
+	var candidates []string
+
+	if deps.getenv != nil {
+		if ch := parseUnixSocketHost(deps.getenv("CONTAINER_HOST")); ch != "" {
+			candidates = append(candidates, ch)
+		}
+		if dh := parseUnixSocketHost(deps.getenv("DOCKER_HOST")); dh != "" {
+			candidates = append(candidates, dh)
+		}
+	}
+
+	switch deps.goos {
+	case "linux":
+		if deps.getenv != nil {
+			if xdg := strings.TrimSpace(deps.getenv("XDG_RUNTIME_DIR")); path.IsAbs(xdg) {
+				candidates = append(candidates, path.Join(xdg, "podman", "podman.sock"))
+			}
+		}
+		if deps.getuid != nil {
+			if uid := deps.getuid(); uid >= 0 {
+				candidates = append(candidates, fmt.Sprintf("/run/user/%d/podman/podman.sock", uid))
+				if uid == 0 && deps.getenv != nil {
+					if sudoUID := strings.TrimSpace(deps.getenv("SUDO_UID")); sudoUID != "" {
+						if parsed, err := strconv.Atoi(sudoUID); err == nil && parsed > 0 {
+							candidates = append(candidates, fmt.Sprintf("/run/user/%d/podman/podman.sock", parsed))
+						}
+					}
+				}
+			}
+		}
+		candidates = append(candidates,
+			"/run/podman/podman.sock",
+			"/var/run/podman/podman.sock",
+		)
+	case "darwin":
+		if deps.getenv != nil {
+			if xdg := strings.TrimSpace(deps.getenv("XDG_RUNTIME_DIR")); path.IsAbs(xdg) {
+				candidates = append(candidates,
+					path.Join(xdg, "podman", "podman-machine-default-api.sock"),
+					path.Join(xdg, "podman", "podman.sock"),
+				)
+			}
+			if tmpdir := strings.TrimSpace(deps.getenv("TMPDIR")); path.IsAbs(tmpdir) {
+				candidates = append(candidates, path.Join(tmpdir, "podman", "podman-machine-default-api.sock"))
+			}
+		}
+		if deps.userHomeDir != nil {
+			if home, err := deps.userHomeDir(); err == nil {
+				home = strings.TrimSpace(home)
+				if path.IsAbs(home) {
+					base := path.Join(home, ".local", "share", "containers", "podman", "machine")
+					candidates = append(candidates,
+						path.Join(base, "podman.sock"),
+						path.Join(base, "applehv", "podman.sock"),
+						path.Join(base, "qemu", "podman.sock"),
+						path.Join(base, "libkrun", "podman.sock"),
+					)
+				}
+			}
+		}
+		candidates = append(candidates, "/var/run/podman/podman.sock")
+	}
+
+	seen := make(map[string]bool, len(candidates))
+	deduped := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		if c == "" || seen[c] {
+			continue
+		}
+		seen[c] = true
+		deduped = append(deduped, c)
+	}
+	return deduped
+}
+
+func findPodmanSocket(deps doctorDeps) (string, bool) {
+	if deps.statPath == nil {
+		return "", false
+	}
+	for _, candidate := range podmanSocketCandidates(deps) {
+		if isUnixSocket(deps.statPath, candidate) {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+func isUnixSocket(statPath func(string) (os.FileInfo, error), sockPath string) bool {
+	fi, err := statPath(sockPath)
+	if err != nil || fi == nil || fi.IsDir() {
+		return false
+	}
+	return fi.Mode()&os.ModeSocket != 0
 }
 
 // RenderDoctor prints the doctor checks in a clean tabular format.
