@@ -216,19 +216,30 @@ func ModifyComposeBytes(data []byte, filePath string, targetService string, targ
 		return nil, fmt.Errorf("modified content failed Compose validation: %w", err)
 	}
 
-	// 3. Confirm target port was updated to 127.0.0.1
-	foundTargetUpdated := false
-	for _, ne := range newEvidenceList {
-		if ne.Service == loc.Service && ne.Line == loc.Line {
-			cleanIP := strings.Trim(strings.TrimSpace(ne.Port.HostIP), "[]")
-			if cleanIP == "127.0.0.1" {
-				foundTargetUpdated = true
-				break
-			}
+	// 3. Confirm the target now binds to 127.0.0.1 and that the host IP is
+	// the *only* thing that changed. Ports, ranges and protocol must match
+	// the original declaration exactly.
+	var before, after *compose.ParsedPort
+	for i := range initialEvidence {
+		if initialEvidence[i].Service == loc.Service && initialEvidence[i].Line == loc.Line {
+			before = &initialEvidence[i].Port
 		}
 	}
-	if !foundTargetUpdated {
+	for i := range newEvidenceList {
+		if newEvidenceList[i].Service == loc.Service && newEvidenceList[i].Line == loc.Line {
+			after = &newEvidenceList[i].Port
+		}
+	}
+	if before == nil || after == nil {
+		return nil, fmt.Errorf("post-modification verification failed: could not find target port on line %d", loc.Line)
+	}
+	if strings.Trim(strings.TrimSpace(after.HostIP), "[]") != "127.0.0.1" {
 		return nil, fmt.Errorf("post-modification verification failed: target port on line %d was not updated to 127.0.0.1", loc.Line)
+	}
+	if before.HostPortStart != after.HostPortStart || before.HostPortEnd != after.HostPortEnd ||
+		before.ContainerPort != after.ContainerPort || before.ContainerPortEnd != after.ContainerPortEnd ||
+		before.Protocol != after.Protocol {
+		return nil, fmt.Errorf("post-modification verification failed: %q -> %q changes more than the host IP", before.Original, after.Original)
 	}
 
 	// 4. Confirm no other ports or services in the file were altered

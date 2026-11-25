@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/DhyaanKanoja11/Lantern/internal/compose"
 	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 	"github.com/DhyaanKanoja11/Lantern/internal/explain"
 )
@@ -22,27 +23,22 @@ func GenerateRecommendation(exp *domain.Exposure, rc explain.RootCause) *domain.
 			return nil
 		}
 
-		hPort := exp.Config.HostPort
-		if hPort == 0 && exp.DockerMapping != nil {
-			hPort = exp.DockerMapping.HostPort
+		// Build the suggestion from what's actually written in the file so
+		// ranges and /proto suffixes survive. If we can't, say nothing rather
+		// than suggest something that changes the mapping.
+		original := exp.Config.Original
+		if original == "" {
+			original = exp.Config.Evidence
 		}
-		cPort := exp.Config.ContainerPort
-		if cPort == 0 && exp.DockerMapping != nil {
-			cPort = exp.DockerMapping.ContainerPort
+		suggested, err := compose.BindToLoopback(original)
+		if err != nil {
+			return nil
 		}
-
-		if hPort > 0 && cPort > 0 {
-			suggested := fmt.Sprintf("127.0.0.1:%d:%d", hPort, cPort)
-			current := exp.Config.Evidence
-			if current == "" {
-				current = fmt.Sprintf("%d:%d", hPort, cPort)
-			}
-			return &domain.Recommendation{
-				Type:        "bind_localhost",
-				Current:     current,
-				Suggested:   suggested,
-				Description: fmt.Sprintf("Bind published port to localhost (127.0.0.1) in %s to prevent local network exposure.", exp.Config.File),
-			}
+		return &domain.Recommendation{
+			Type:        "bind_localhost",
+			Current:     original,
+			Suggested:   suggested,
+			Description: fmt.Sprintf("Bind published port to localhost (127.0.0.1) in %s to prevent local network exposure.", exp.Config.File),
 		}
 	}
 

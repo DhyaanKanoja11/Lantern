@@ -771,3 +771,38 @@ func TestDefaultRemediator_Apply_MissingFingerprint(t *testing.T) {
 		t.Fatal("expected error applying plan with missing fingerprint, got nil")
 	}
 }
+
+// A range mapping must never be collapsed into a single port, even if the
+// caller hands us a bad replacement string.
+func TestModifyComposeBytes_RefusesToCollapseRange(t *testing.T) {
+	data := []byte(`services:
+  web:
+    image: nginx
+    ports:
+      - "8080-8085:80-85"
+`)
+	_, err := ModifyComposeBytes(data, "docker-compose.yml", "web", 5, 8082, "127.0.0.1:8082:80")
+	if err == nil {
+		t.Fatal("expected the edit to be refused, it would drop five mappings")
+	}
+
+	out, err := ModifyComposeBytes(data, "docker-compose.yml", "web", 5, 8082, "127.0.0.1:8080-8085:80-85")
+	if err != nil {
+		t.Fatalf("range-preserving edit should be fine: %v", err)
+	}
+	if !strings.Contains(string(out), `- "127.0.0.1:8080-8085:80-85"`) {
+		t.Fatalf("unexpected output:\n%s", out)
+	}
+}
+
+func TestModifyComposeBytes_RefusesToChangeProtocol(t *testing.T) {
+	data := []byte(`services:
+  dns:
+    image: coredns
+    ports:
+      - "53:53/udp"
+`)
+	if _, err := ModifyComposeBytes(data, "docker-compose.yml", "dns", 5, 53, "127.0.0.1:53:53"); err == nil {
+		t.Fatal("expected refusal: udp mapping would silently become tcp")
+	}
+}
