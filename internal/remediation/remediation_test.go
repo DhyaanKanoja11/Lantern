@@ -860,3 +860,23 @@ func TestDefaultRemediator_Apply_ChangeAfterFingerprintCheck(t *testing.T) {
 		t.Errorf("backup holds unverified content:\n%s", bak)
 	}
 }
+
+func TestFindTargetPort_UsesPortToDisambiguate(t *testing.T) {
+	data := []byte(`services:
+  web:
+    ports:
+      - "80:80"
+      - "443:443"
+`)
+	loc, err := FindTargetPort(data, "web", 0, 443)
+	if err != nil {
+		t.Fatalf("port 443 identifies a single declaration, got %v", err)
+	}
+	if loc.Line != 5 || loc.HostPort != 443 || loc.ContainerPort != 443 {
+		t.Errorf("unexpected location %+v", loc)
+	}
+
+	if _, err := FindTargetPort(data, "web", 4, 443); err == nil {
+		t.Error("line 4 publishes 80, not 443; expected a refusal")
+	}
+}

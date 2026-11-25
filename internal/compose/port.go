@@ -347,3 +347,9 @@ func BindToLoopback(original string) (string, error) {
 	}
 	return rewritten, nil
 }
+
+// ParsePortShort parses a Compose short-syntax port string. Variables
+// (${VAR}) are not expanded.
+func ParsePortShort(raw string) (*ParsedPort, error) {
+	return parsePortShort(raw)
+}

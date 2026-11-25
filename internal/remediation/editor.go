@@ -83,11 +83,32 @@ func FindTargetPort(data []byte, targetService string, targetLine int, targetPor
 							continue
 						}
 
-						matches = append(matches, TargetLocation{
+						loc := TargetLocation{
 							Service: svcKey.Value,
 							Line:    item.Line,
 							Value:   item.Value,
-						})
+						}
+
+						// If we know the host port, the declaration has to
+						// actually publish it. Ephemeral ("80") and
+						// unparseable values can't be checked here; later
+						// verification handles those.
+						if parsed, err := compose.ParsePortShort(item.Value); err == nil {
+							if targetPort > 0 && !parsed.IsEphemeral() && !parsed.MatchesPort(targetPort) {
+								continue
+							}
+							loc.HostPort = parsed.HostPortStart
+							loc.ContainerPort = parsed.ContainerPort
+							if targetPort > 0 && parsed.MatchesPort(targetPort) {
+								loc.HostPort = targetPort
+								// In "8080-8085:80-85", 8082 maps to 82.
+								if parsed.ContainerPortEnd > parsed.ContainerPort {
+									loc.ContainerPort = parsed.ContainerPort + (targetPort - parsed.HostPortStart)
+								}
+							}
+						}
+
+						matches = append(matches, loc)
 					}
 				}
 			}
