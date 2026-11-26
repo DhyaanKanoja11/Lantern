@@ -174,7 +174,7 @@ func writeGitHubStepSummary(summaries []domain.ExposureSummary, violations []dom
 	f, err := os.OpenFile(summaryPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err == nil {
 		defer f.Close()
-		f.WriteString(sb.String())
+		_, _ = f.WriteString(sb.String())
 	}
 }
 

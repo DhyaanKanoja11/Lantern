@@ -77,7 +77,7 @@ func (p *SystemInterfaceProvider) Interfaces(ctx context.Context) ([]domain.Netw
 				Index:      iface.Index,
 				Name:       iface.Name,
 				IP:         ipStr,
-				CIDR:       addr.String(),
+				CIDR:       cidr,
 				Kind:       kind,
 				IsLoopback: isLoopback,
 				IsUp:       isUp,
