@@ -243,7 +243,7 @@ func checkContainerRuntime(ctx context.Context, deps doctorDeps) DoctorCheck {
 		for _, sockPath := range candidates {
 			if fi, statErr := deps.stat(sockPath); statErr == nil && !fi.IsDir() {
 				return DoctorCheck{
-					Name:    "Docker Environment",
+					Name:    "Container Engine (Podman)",
 					Status:  "OK",
 					Message: fmt.Sprintf("Podman CLI (%s) and socket (%s) detected (drop-in container engine)", podmanPath, sockPath),
 				}
@@ -251,20 +251,20 @@ func checkContainerRuntime(ctx context.Context, deps doctorDeps) DoctorCheck {
 		}
 		if len(candidates) > 0 {
 			return DoctorCheck{
-				Name:    "Docker Environment",
+				Name:    "Container Engine (Podman)",
 				Status:  "WARN",
 				Message: fmt.Sprintf("Podman CLI found (%s), but no Podman socket was detected (checked %s)", podmanPath, strings.Join(candidates, ", ")),
 			}
 		}
 		return DoctorCheck{
-			Name:    "Docker Environment",
+			Name:    "Container Engine (Podman)",
 			Status:  "WARN",
 			Message: fmt.Sprintf("Podman CLI found (%s), but no Podman socket was detected", podmanPath),
 		}
 	}
 
 	return DoctorCheck{
-		Name:    "Docker Environment",
+		Name:    "Container Runtime",
 		Status:  "WARN",
 		Message: "Docker or Podman CLI not found in PATH (container correlation will be skipped)",
 	}
@@ -273,8 +273,15 @@ func checkContainerRuntime(ctx context.Context, deps doctorDeps) DoctorCheck {
 func podmanSocketCandidates(deps doctorDeps) []string {
 	var raw []string
 
-	if dockerHost := strings.TrimSpace(deps.getenv("DOCKER_HOST")); strings.HasPrefix(dockerHost, "unix://") {
-		raw = append(raw, strings.TrimPrefix(dockerHost, "unix://"))
+	if dockerHost := strings.TrimSpace(deps.getenv("DOCKER_HOST")); dockerHost != "" {
+		switch {
+		case strings.HasPrefix(dockerHost, "unix://"):
+			raw = append(raw, strings.TrimPrefix(dockerHost, "unix://"))
+		case strings.HasPrefix(dockerHost, "npipe://"):
+			pipePath := strings.TrimPrefix(dockerHost, "npipe://")
+			pipePath = strings.ReplaceAll(pipePath, "/", "\\")
+			raw = append(raw, pipePath)
+		}
 	}
 	if xdgDir := strings.TrimSpace(deps.getenv("XDG_RUNTIME_DIR")); xdgDir != "" {
 		raw = append(raw, filepath.Join(xdgDir, "podman", "podman.sock"))
@@ -290,12 +297,20 @@ func podmanSocketCandidates(deps doctorDeps) []string {
 		if home := strings.TrimSpace(deps.getenv("HOME")); home != "" {
 			raw = append(raw, filepath.Join(home, ".local", "share", "containers", "podman", "machine", "podman.sock"))
 		}
+	case "windows":
+		raw = append(raw, `\\.\pipe\podman-machine-default`, `\\.\pipe\podman-machine-default-root`)
+		if userProfile := strings.TrimSpace(deps.getenv("USERPROFILE")); userProfile != "" {
+			raw = append(raw, filepath.Join(userProfile, ".local", "share", "containers", "podman", "machine", "podman.sock"))
+		}
 	}
 
 	seen := make(map[string]bool, len(raw))
 	var unique []string
 	for _, p := range raw {
-		clean := filepath.Clean(p)
+		clean := p
+		if !strings.HasPrefix(p, `\\.\pipe\`) {
+			clean = filepath.Clean(p)
+		}
 		if !seen[clean] {
 			seen[clean] = true
 			unique = append(unique, clean)

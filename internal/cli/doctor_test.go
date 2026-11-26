@@ -61,7 +61,6 @@ func TestRunDoctorChecks(t *testing.T) {
 
 	expectedChecks := []string{
 		"Operating System",
-		"Docker Environment",
 		"Network Interfaces",
 		"Listener Collector",
 	}
@@ -79,6 +78,9 @@ func TestRunDoctorChecks(t *testing.T) {
 		if !names[expected] {
 			t.Errorf("expected check %q to be present in doctor checks", expected)
 		}
+	}
+	if !names["Docker Environment"] && !names["Container Engine (Podman)"] && !names["Container Runtime"] {
+		t.Errorf("expected a container runtime check ('Docker Environment', 'Container Engine (Podman)', or 'Container Runtime'), got: %v", names)
 	}
 }
 
@@ -180,8 +182,8 @@ func TestDoctor_PodmanDetectedWithSocket(t *testing.T) {
 	}
 
 	check := checkContainerRuntime(context.Background(), deps)
-	if check.Name != "Docker Environment" {
-		t.Errorf("expected check name 'Docker Environment', got %q", check.Name)
+	if check.Name != "Container Engine (Podman)" {
+		t.Errorf("expected check name 'Container Engine (Podman)', got %q", check.Name)
 	}
 	if check.Status != "OK" {
 		t.Errorf("expected OK status when podman CLI and socket are present, got %q (%s)", check.Status, check.Message)
@@ -201,6 +203,9 @@ func TestDoctor_PodmanDetectedWithoutSocket(t *testing.T) {
 	}
 
 	check := checkContainerRuntime(context.Background(), deps)
+	if check.Name != "Container Engine (Podman)" {
+		t.Errorf("expected check name 'Container Engine (Podman)', got %q", check.Name)
+	}
 	if check.Status != "WARN" {
 		t.Errorf("expected WARN status when podman socket is missing, got %q", check.Status)
 	}
@@ -233,6 +238,9 @@ func TestDoctor_PodmanMacOSMachineSocket(t *testing.T) {
 	}
 
 	check := checkContainerRuntime(context.Background(), deps)
+	if check.Name != "Container Engine (Podman)" {
+		t.Errorf("expected check name 'Container Engine (Podman)', got %q", check.Name)
+	}
 	if check.Status != "OK" {
 		t.Errorf("expected OK status on darwin podman machine socket, got %q (%s)", check.Status, check.Message)
 	}
@@ -241,10 +249,42 @@ func TestDoctor_PodmanMacOSMachineSocket(t *testing.T) {
 	}
 }
 
+func TestDoctor_PodmanWindowsNamedPipe(t *testing.T) {
+	deps := baseTestDoctorDeps()
+	deps.goos = "windows"
+	deps.lookPath = func(name string) (string, error) {
+		if name == "podman" {
+			return `C:\Program Files\RedHat\Podman\podman.exe`, nil
+		}
+		return "", errors.New("not found")
+	}
+	expectedPipe := `\\.\pipe\podman-machine-default`
+	deps.stat = func(name string) (os.FileInfo, error) {
+		if name == expectedPipe {
+			return fakeFileInfo{name: "podman-machine-default"}, nil
+		}
+		return nil, os.ErrNotExist
+	}
+
+	check := checkContainerRuntime(context.Background(), deps)
+	if check.Name != "Container Engine (Podman)" {
+		t.Errorf("expected check name 'Container Engine (Podman)', got %q", check.Name)
+	}
+	if check.Status != "OK" {
+		t.Errorf("expected OK status on Windows Podman named pipe, got %q (%s)", check.Status, check.Message)
+	}
+	if !strings.Contains(check.Message, expectedPipe) {
+		t.Errorf("expected pipe path %q in message: %s", expectedPipe, check.Message)
+	}
+}
+
 func TestDoctor_DockerAndPodmanAbsent(t *testing.T) {
 	deps := baseTestDoctorDeps()
 
 	check := checkContainerRuntime(context.Background(), deps)
+	if check.Name != "Container Runtime" {
+		t.Errorf("expected check name 'Container Runtime', got %q", check.Name)
+	}
 	if check.Status != "WARN" {
 		t.Errorf("expected WARN status when neither docker nor podman exists, got %q", check.Status)
 	}
