@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
 PackageIdentifier: DhyaanKanoja11.Lantern
-PackageVersion: 0.3.0
+PackageVersion: 0.4.0
 Commands:
   - lantern
 Installers:
@@ -10,7 +10,7 @@ Installers:
     NestedInstallerFiles:
       - RelativeFilePath: lantern.exe
         PortableCommandAlias: lantern
-    InstallerUrl: https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.3.0/lantern_0.3.0_windows_amd64.zip
-    InstallerSha256: 186760414bd4972d9317f36bf90ab11f83b0ffe0f136051cd38f6d578bff60bc
+    InstallerUrl: https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.4.0/lantern_0.4.0_windows_amd64.zip
+    InstallerSha256: 0824e4e1a5ec04f9912fd2cbfed0d9b7dd64ffb87e2c16be78ad85de1c81f2ec
 ManifestType: installer
 ManifestVersion: 1.6.0

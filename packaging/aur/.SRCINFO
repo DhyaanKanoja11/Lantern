@@ -1,6 +1,6 @@
 pkgbase = lantern-bin
 	pkgdesc = Local-first developer security tool explaining configuration causality behind exposed services
-	pkgver = 0.3.0
+	pkgver = 0.4.0
 	pkgrel = 1
 	url = https://github.com/DhyaanKanoja11/Lantern
 	arch = x86_64
@@ -10,9 +10,9 @@ pkgbase = lantern-bin
 	optdepends = docker: for container and Compose correlation
 	provides = lantern
 	conflicts = lantern
-	source_x86_64 = https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.3.0/lantern_0.3.0_linux_amd64.tar.gz
-	sha256sums_x86_64 = 73de38fbd25ac3c2ede96b830abbbf59249572b5019b9e5b11b3d8d77a53a752
-	source_aarch64 = https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.3.0/lantern_0.3.0_linux_arm64.tar.gz
-	sha256sums_aarch64 = 4d40ff817b366aef7b446d5238c36cdd3708b545c47732f44ee1eb056a75b723
+	source_x86_64 = https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.4.0/lantern_0.4.0_linux_amd64.tar.gz
+	sha256sums_x86_64 = 99ca82e4b00a2681c8f2da0fc87e1b02eb37244ddaffae8c809e7906aa28c7a8
+	source_aarch64 = https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.4.0/lantern_0.4.0_linux_arm64.tar.gz
+	sha256sums_aarch64 = 587ca43fe219ce400a299dbde356257d860b843ea12e5a61306680e5dbffe76c
 
 pkgname = lantern-bin

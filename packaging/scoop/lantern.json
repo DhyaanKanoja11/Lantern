@@ -1,12 +1,12 @@
 {
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Local-first developer security tool explaining why network services are reachable",
   "homepage": "https://github.com/DhyaanKanoja11/Lantern",
   "license": "MIT",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.3.0/lantern_0.3.0_windows_amd64.zip",
-      "hash": "186760414bd4972d9317f36bf90ab11f83b0ffe0f136051cd38f6d578bff60bc"
+      "url": "https://github.com/DhyaanKanoja11/Lantern/releases/download/v0.4.0/lantern_0.4.0_windows_amd64.zip",
+      "hash": "0824e4e1a5ec04f9912fd2cbfed0d9b7dd64ffb87e2c16be78ad85de1c81f2ec"
     }
   },
   "bin": "lantern.exe",
@@ -18,5 +18,5 @@
       }
     }
   },
-  "notes": "Lantern natively inspects active TCP listeners, performs process attribution, and verifies Docker Compose configurations on Windows."
+  "notes": "Lantern on native Windows operates in diagnostic mode ('doctor', 'version'). For active socket inspection and process attribution, run Lantern inside WSL2."
 }
