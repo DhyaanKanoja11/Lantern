@@ -312,6 +312,29 @@ Ensure your Go bin directory is in your `PATH`:
 export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
+### Option G: GitHub Actions CI Integration
+
+Audit your Docker Compose configurations in GitHub Actions CI using the official Composite Action:
+
+```yaml
+- name: Run Lantern Preflight
+  uses: DhyaanKanoja11/Lantern@v0.4.0
+  with:
+    command: 'preflight'
+    file: 'docker-compose.yml'
+```
+
+To fail CI on accidental wildcard exposures (`0.0.0.0` or `::`):
+
+```yaml
+- name: Audit Port Exposure
+  uses: DhyaanKanoja11/Lantern@v0.4.0
+  with:
+    command: 'scan'
+    fail-on-wildcard: 'true'
+    ignore-ports: '80,443'
+```
+
 ### Shell Completion
 
 Generate tab-completion scripts for `bash`, `zsh`, `fish`, or `powershell`:
@@ -491,7 +514,7 @@ Add the following configuration to your MCP configuration file (`claude_desktop_
 
 #### Installing via Smithery
 ```bash
-npx -y @smithery/cli install lantern
+npx -y @smithery/cli install DhyaanKanoja11/Lantern --client claude
 ```
 
 #### Exposed MCP Tools
