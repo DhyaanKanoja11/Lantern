@@ -42,6 +42,10 @@ func (m *mockAnalyzer) Why(ctx context.Context, port uint16, composePath string)
 	return m.exp, nil
 }
 
+func (m *mockAnalyzer) WhyWithProto(ctx context.Context, port uint16, proto string, composePath string) (*domain.Exposure, error) {
+	return m.Why(ctx, port, composePath)
+}
+
 type mockReclaimer struct {
 	plan   *reclaim.ReclaimPlan
 	result *reclaim.ReclaimResult

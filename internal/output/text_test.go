@@ -18,7 +18,7 @@ func TestTextFormatter_RenderScan_Empty(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "No active TCP listening sockets detected.") {
+	if !strings.Contains(out, "No active listening sockets detected.") {
 		t.Errorf("expected no active sockets message, got: %s", out)
 	}
 }

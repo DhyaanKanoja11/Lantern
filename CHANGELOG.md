@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v0.4.1] - 2026-11-27
+
+### Added
+- **Contributor Onboarding and Stale Automation**: Added zero-API-key GitHub Actions workflows (`welcome.yml` and `stale.yml`) using `actions/first-interaction` and `actions/stale` to greet first-time contributors with project guidelines and manage issue lifecycle.
+- **UDP Socket Exposure Scanning (`lantern scan`, `lantern why`)**: Added native cross-platform UDP socket discovery across Linux (`ss -lntupH`, `/proc/net/udp`, `/proc/net/udp6`), macOS (`lsof -iUDP`), and Windows (`netstat -ano`).
+- **Protocol Filtering**: Added `--proto` flag to `lantern scan` and `lantern why` to filter inspection by `tcp` or `udp` protocol.
+- **Enhanced Scan Table Layout**: Added `PROTO` column to `lantern scan` table output to clearly differentiate TCP and UDP listening services.
+- **Podman CLI and Socket Detection (`lantern doctor`)**: Added automated detection for the `podman` CLI binary and rootless Podman Unix sockets (`/run/user/<uid>/podman/podman.sock` and `$XDG_RUNTIME_DIR/podman/podman.sock`) to report container runtime readiness in doctor diagnostics.
+
+### Changed
+- **CI/CD Workflow Hardening**: Upgraded GitHub Actions workflow suite (`ci.yml`, `release.yml`, `security.yml`, `triage.yml`) to Node 24 actions runtimes and consolidated Dependabot maintenance schedules.
+- **Packaging Synchronization**: Updated package manifests for Homebrew, Scoop, AUR, and WinGet to reflect latest distributions.
+
+---
+
 ## [v0.4.0] - 2026-11-26
 
 ### Added

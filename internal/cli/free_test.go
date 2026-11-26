@@ -24,6 +24,10 @@ func (m *mockFreeAnalyzer) Why(ctx context.Context, port uint16, projectDir stri
 	return m.exposure, nil
 }
 
+func (m *mockFreeAnalyzer) WhyWithProto(ctx context.Context, port uint16, proto string, projectDir string) (*domain.Exposure, error) {
+	return m.Why(ctx, port, projectDir)
+}
+
 func (m *mockFreeAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, error) {
 	return nil, nil
 }

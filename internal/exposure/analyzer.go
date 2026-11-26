@@ -63,8 +63,13 @@ func NewAnalyzerWithDeps(
 	}
 }
 
-// Why investigates the exposure path and causal origin for a specific TCP port.
+// Why investigates the exposure path and causal origin for a specific port.
 func (a *DefaultAnalyzer) Why(ctx context.Context, port uint16, projectDir string) (*domain.Exposure, error) {
+	return a.WhyWithProto(ctx, port, "", projectDir)
+}
+
+// WhyWithProto investigates the exposure path and causal origin for a specific port and protocol.
+func (a *DefaultAnalyzer) WhyWithProto(ctx context.Context, port uint16, protoFilter string, projectDir string) (*domain.Exposure, error) {
 	if a.collector == nil {
 		return nil, errors.New("listener collector unavailable")
 	}
@@ -77,18 +82,24 @@ func (a *DefaultAnalyzer) Why(ctx context.Context, port uint16, projectDir strin
 	var matched []domain.Listener
 	for _, l := range listeners {
 		if l.Port == port {
+			if protoFilter != "" && !strings.EqualFold(l.Protocol, protoFilter) {
+				continue
+			}
 			matched = append(matched, l)
 		}
 	}
 
 	if len(matched) == 0 {
+		if protoFilter != "" {
+			return nil, fmt.Errorf("%w on %s port %d", ErrNoListener, strings.ToUpper(protoFilter), port)
+		}
 		return nil, fmt.Errorf("%w on port %d", ErrNoListener, port)
 	}
 
 	if isAmbiguousListeners(matched) {
 		var addrs []string
 		for _, m := range matched {
-			addrs = append(addrs, fmt.Sprintf("%s (PID %d)", m.Address, m.PID))
+			addrs = append(addrs, fmt.Sprintf("%s/%s (PID %d)", m.Address, m.Protocol, m.PID))
 		}
 		return nil, fmt.Errorf("%w on port %d across addresses: %s", ErrAmbiguousListener, port, strings.Join(addrs, ", "))
 	}
@@ -288,12 +299,23 @@ func isAmbiguousListeners(listeners []domain.Listener) bool {
 	if len(listeners) <= 1 {
 		return false
 	}
-	firstAddr := listeners[0].Address
-	firstPID := listeners[0].PID
-	for _, l := range listeners[1:] {
-		// Conflicting if distinct address and distinct PID
-		if l.Address != firstAddr && firstPID > 0 && l.PID > 0 && l.PID != firstPID {
-			return true
+	// Check for conflicting listeners within each protocol
+	byProto := make(map[string][]domain.Listener)
+	for _, l := range listeners {
+		p := strings.ToLower(l.Protocol)
+		byProto[p] = append(byProto[p], l)
+	}
+
+	for _, list := range byProto {
+		if len(list) <= 1 {
+			continue
+		}
+		firstAddr := list[0].Address
+		firstPID := list[0].PID
+		for _, l := range list[1:] {
+			if l.Address != firstAddr && firstPID > 0 && l.PID > 0 && l.PID != firstPID {
+				return true
+			}
 		}
 	}
 	return false
@@ -301,8 +323,27 @@ func isAmbiguousListeners(listeners []domain.Listener) bool {
 
 // selectTargetListener picks the most exposed listener on the port. When the
 // same port is bound on loopback and on a LAN address, the LAN one is what
-// matters; reporting "localhost only" there would be wrong.
+// matters; reporting "localhost only" there would be wrong. On tie, TCP is preferred.
 func selectTargetListener(listeners []domain.Listener) domain.Listener {
+	if len(listeners) == 1 {
+		return listeners[0]
+	}
+	var tcps, udps []domain.Listener
+	for _, l := range listeners {
+		if strings.EqualFold(l.Protocol, "tcp") {
+			tcps = append(tcps, l)
+		} else {
+			udps = append(udps, l)
+		}
+	}
+	if len(tcps) > 0 && len(udps) > 0 {
+		tcpBest := collector.MostExposed(tcps)
+		udpBest := collector.MostExposed(udps)
+		if collector.ExposureRank(udpBest.Address) > collector.ExposureRank(tcpBest.Address) {
+			return udpBest
+		}
+		return tcpBest
+	}
 	return collector.MostExposed(listeners)
 }
 

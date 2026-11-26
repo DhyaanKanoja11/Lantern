@@ -9,11 +9,7 @@ import (
 	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
-// ParseDarwinLsof parses the standard stdout of 'lsof -iTCP -sTCP:LISTEN -P -n' on macOS.
-// Example line:
-// COMMAND   PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
-// node    48212 user   23u  IPv4 0x867b7f6fa595d989      0t0  TCP *:3000 (LISTEN)
-// postgres 1290 user    7u  IPv4 0x867b7f6fa595d123      0t0  TCP 127.0.0.1:5432 (LISTEN)
+// ParseDarwinLsof parses the standard stdout of 'lsof -iTCP -sTCP:LISTEN -P -n' and 'lsof -iUDP -P -n' on macOS.
 func ParseDarwinLsof(r io.Reader) ([]domain.Listener, error) {
 	scanner := bufio.NewScanner(r)
 	var listeners []domain.Listener
@@ -35,19 +31,26 @@ func ParseDarwinLsof(r io.Reader) ([]domain.Listener, error) {
 			continue
 		}
 
-		// Find the target address:port token. In lsof it is usually the field after "TCP"
+		// Find the target address:port token and protocol
+		var proto string
 		var addrToken string
 		for i, f := range fields {
 			if strings.EqualFold(f, "TCP") && i+1 < len(fields) {
+				proto = "tcp"
+				addrToken = fields[i+1]
+				break
+			}
+			if strings.EqualFold(f, "UDP") && i+1 < len(fields) {
+				proto = "udp"
 				addrToken = fields[i+1]
 				break
 			}
 		}
 
 		if addrToken == "" {
-			// Fallback: look for token with a colon that doesn't say LISTEN
+			// Fallback: look for token with a colon that doesn't say LISTEN and is not connected
 			for _, f := range fields {
-				if strings.Contains(f, ":") && !strings.Contains(f, "LISTEN") {
+				if strings.Contains(f, ":") && !strings.Contains(f, "LISTEN") && !strings.Contains(f, "->") {
 					addrToken = f
 					break
 				}
@@ -58,13 +61,30 @@ func ParseDarwinLsof(r io.Reader) ([]domain.Listener, error) {
 			continue
 		}
 
+		// For UDP, skip outbound connected datagram sockets (e.g. host:port->peer:port)
+		if strings.Contains(addrToken, "->") {
+			continue
+		}
+
+		// For TCP, ensure LISTEN state
+		if proto == "tcp" && !strings.Contains(line, "LISTEN") {
+			continue
+		}
+		if proto == "" {
+			if strings.Contains(line, "LISTEN") {
+				proto = "tcp"
+			} else {
+				proto = "udp"
+			}
+		}
+
 		addr, port, err := SplitAddressPort(addrToken)
 		if err != nil {
 			continue
 		}
 
 		listeners = append(listeners, domain.Listener{
-			Protocol:    "tcp",
+			Protocol:    proto,
 			Address:     addr,
 			Port:        port,
 			PID:         pidVal,

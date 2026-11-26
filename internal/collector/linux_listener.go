@@ -42,13 +42,21 @@ func (c *linuxCollector) CollectListeners(ctx context.Context) ([]domain.Listene
 }
 
 func (c *linuxCollector) collectFromSS(ctx context.Context) ([]domain.Listener, error) {
-	cmd := exec.CommandContext(ctx, "ss", "-lntpH")
+	cmd := exec.CommandContext(ctx, "ss", "-lntupH")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ss command failed: %w (stderr: %s)", err, stderr.String())
+		// Fallback to -lntpH if -lntupH is unsupported
+		stdout.Reset()
+		stderr.Reset()
+		cmdFallback := exec.CommandContext(ctx, "ss", "-lntpH")
+		cmdFallback.Stdout = &stdout
+		cmdFallback.Stderr = &stderr
+		if errFallback := cmdFallback.Run(); errFallback != nil {
+			return nil, fmt.Errorf("ss command failed: %w (stderr: %s)", err, stderr.String())
+		}
 	}
 
 	return ParseSSOutput(&stdout)
@@ -73,8 +81,24 @@ func (c *linuxCollector) collectFromProc() ([]domain.Listener, error) {
 		}
 	}
 
+	// Read IPv4 /proc/net/udp
+	if dataUdp, err := os.Open("/proc/net/udp"); err == nil {
+		defer dataUdp.Close()
+		if lUdp, err := ParseProcNetUDP(dataUdp); err == nil {
+			allListeners = append(allListeners, lUdp...)
+		}
+	}
+
+	// Read IPv6 /proc/net/udp6
+	if dataUdp6, err := os.Open("/proc/net/udp6"); err == nil {
+		defer dataUdp6.Close()
+		if lUdp6, err := ParseProcNetUDP6(dataUdp6); err == nil {
+			allListeners = append(allListeners, lUdp6...)
+		}
+	}
+
 	if len(allListeners) == 0 {
-		return nil, fmt.Errorf("/proc/net/tcp and /proc/net/tcp6 produced no listeners or were unreadable")
+		return nil, fmt.Errorf("/proc/net/tcp, tcp6, udp, and udp6 produced no listeners or were unreadable")
 	}
 
 	return DeduplicateAndSort(allListeners), nil

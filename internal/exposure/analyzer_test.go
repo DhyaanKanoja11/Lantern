@@ -424,3 +424,90 @@ func TestAnalyzer_Why_WarnsAboutUnresolvedInterpolation(t *testing.T) {
 		t.Fatal("expected a warning explaining why the compose line wasn't matched")
 	}
 }
+
+func TestAnalyzer_Why_UDP(t *testing.T) {
+	col := &mockCollector{
+		listeners: []domain.Listener{
+			{Protocol: "udp", Address: "0.0.0.0", Port: 5353, ProcessName: "avahi-daemon", PID: 500},
+		},
+	}
+	analyzer := NewAnalyzerWithDeps(col, nil, nil, nil, nil, explain.NewDefaultExplainer())
+
+	exp, err := analyzer.Why(context.Background(), 5353, ".")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if exp.Protocol != "udp" {
+		t.Errorf("expected protocol 'udp', got %q", exp.Protocol)
+	}
+	if exp.Port != 5353 {
+		t.Errorf("expected port 5353, got %d", exp.Port)
+	}
+	if exp.BindAddress != "0.0.0.0" {
+		t.Errorf("expected bind address '0.0.0.0', got %q", exp.BindAddress)
+	}
+}
+
+func TestAnalyzer_WhyWithProto_Disambiguation(t *testing.T) {
+	col := &mockCollector{
+		listeners: []domain.Listener{
+			{Protocol: "tcp", Address: "127.0.0.1", Port: 53, ProcessName: "dns-tcp", PID: 100},
+			{Protocol: "udp", Address: "0.0.0.0", Port: 53, ProcessName: "dns-udp", PID: 101},
+		},
+	}
+	analyzer := NewAnalyzerWithDeps(col, nil, nil, nil, nil, explain.NewDefaultExplainer())
+
+	// Filter for TCP specifically
+	expTCP, err := analyzer.WhyWithProto(context.Background(), 53, "tcp", ".")
+	if err != nil {
+		t.Fatalf("unexpected error querying tcp: %v", err)
+	}
+	if expTCP.Protocol != "tcp" || expTCP.BindAddress != "127.0.0.1" {
+		t.Errorf("expected tcp on 127.0.0.1, got: %+v", expTCP)
+	}
+
+	// Filter for UDP specifically
+	expUDP, err := analyzer.WhyWithProto(context.Background(), 53, "udp", ".")
+	if err != nil {
+		t.Fatalf("unexpected error querying udp: %v", err)
+	}
+	if expUDP.Protocol != "udp" || expUDP.BindAddress != "0.0.0.0" {
+		t.Errorf("expected udp on 0.0.0.0, got: %+v", expUDP)
+	}
+
+	// Auto-detect without filter: should select more exposed listener (UDP 0.0.0.0 > TCP 127.0.0.1)
+	expAuto, err := analyzer.Why(context.Background(), 53, ".")
+	if err != nil {
+		t.Fatalf("unexpected error in auto mode: %v", err)
+	}
+	if expAuto.Protocol != "udp" || expAuto.BindAddress != "0.0.0.0" {
+		t.Errorf("expected auto mode to choose more exposed UDP listener, got: %+v", expAuto)
+	}
+}
+
+func TestAnalyzer_Scan_IncludesUDP(t *testing.T) {
+	col := &mockCollector{
+		listeners: []domain.Listener{
+			{Protocol: "tcp", Address: "127.0.0.1", Port: 8080, ProcessName: "web", PID: 200},
+			{Protocol: "udp", Address: "0.0.0.0", Port: 123, ProcessName: "ntp", PID: 201},
+		},
+	}
+	analyzer := NewAnalyzerWithDeps(col, nil, nil, nil, nil, explain.NewDefaultExplainer())
+
+	report, err := analyzer.ScanReport(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected scan error: %v", err)
+	}
+
+	if len(report.Summaries) != 2 {
+		t.Fatalf("expected 2 summaries, got %d", len(report.Summaries))
+	}
+
+	if report.Summaries[0].Protocol != "tcp" || report.Summaries[0].Port != 8080 {
+		t.Errorf("unexpected summary 0: %+v", report.Summaries[0])
+	}
+	if report.Summaries[1].Protocol != "udp" || report.Summaries[1].Port != 123 {
+		t.Errorf("unexpected summary 1: %+v", report.Summaries[1])
+	}
+}

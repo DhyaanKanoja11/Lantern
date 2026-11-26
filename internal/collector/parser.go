@@ -111,7 +111,8 @@ func ParseSSUsers(line string) (string, int) {
 	return name, pid
 }
 
-// ParseSSLine parses a single line of `ss -lntpH` output into a Listener.
+// ParseSSLine parses a single line of `ss` output into a Listener.
+// Supports both `ss -lntpH` (TCP only) and `ss -lntupH` (TCP and UDP).
 func ParseSSLine(line string) (*domain.Listener, error) {
 	line = strings.TrimSpace(line)
 	if line == "" {
@@ -128,13 +129,37 @@ func ParseSSLine(line string) (*domain.Listener, error) {
 		return nil, fmt.Errorf("insufficient fields in line: %q", line)
 	}
 
-	// The first field should be LISTEN
-	if fields[0] != "LISTEN" {
+	var proto string
+	var state string
+	var localAddrStr string
+
+	first := strings.ToLower(fields[0])
+	if first == "tcp" || first == "udp" {
+		proto = first
+		if len(fields) < 5 {
+			return nil, fmt.Errorf("insufficient fields in line: %q", line)
+		}
+		state = fields[1]
+		localAddrStr = fields[4]
+	} else if fields[0] == "LISTEN" {
+		proto = "tcp"
+		state = "LISTEN"
+		localAddrStr = fields[3]
+	} else if fields[0] == "UNCONN" {
+		proto = "udp"
+		state = "UNCONN"
+		localAddrStr = fields[3]
+	} else {
 		return nil, nil
 	}
 
-	// Local Address:Port is column 3 (0-indexed)
-	localAddrStr := fields[3]
+	if proto == "tcp" && state != "LISTEN" {
+		return nil, nil
+	}
+	if proto == "udp" && state != "UNCONN" {
+		return nil, nil
+	}
+
 	addr, port, err := SplitAddressPort(localAddrStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse local address %q: %w", localAddrStr, err)
@@ -143,7 +168,7 @@ func ParseSSLine(line string) (*domain.Listener, error) {
 	procName, pid := ParseSSUsers(line)
 
 	return &domain.Listener{
-		Protocol:    "tcp",
+		Protocol:    proto,
 		Address:     addr,
 		Port:        port,
 		PID:         pid,
@@ -312,7 +337,146 @@ func ParseProcNetTCP6(r io.Reader) ([]domain.Listener, error) {
 	return DeduplicateAndSort(listeners), nil
 }
 
-// DeduplicateAndSort eliminates identical listener entries and sorts by Port then Address.
+// ParseProcNetUDP parses Linux /proc/net/udp format.
+func ParseProcNetUDP(r io.Reader) ([]domain.Listener, error) {
+	var listeners []domain.Listener
+	scanner := bufio.NewScanner(r)
+	isHeader := true
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if isHeader {
+			isHeader = false
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+
+		// Field 2 is rem_address "00000000:0000" for listening/unconnected sockets
+		if len(fields) > 2 && !strings.HasPrefix(fields[2], "00000000:") {
+			continue
+		}
+
+		// Field 1 is local_address "XXXXXXXX:YYYY"
+		parts := strings.Split(fields[1], ":")
+		if len(parts) != 2 {
+			continue
+		}
+
+		portHex, err := strconv.ParseUint(parts[1], 16, 16)
+		if err != nil {
+			continue
+		}
+
+		ipBytes, err := hex.DecodeString(parts[0])
+		if err != nil || len(ipBytes) != 4 {
+			continue
+		}
+
+		// /proc/net/udp encodes IPv4 in little-endian byte order
+		ip := net.IPv4(ipBytes[3], ipBytes[2], ipBytes[1], ipBytes[0]).String()
+
+		listeners = append(listeners, domain.Listener{
+			Protocol:    "udp",
+			Address:     NormalizeAddress(ip),
+			Port:        uint16(portHex),
+			PID:         0,
+			ProcessName: "",
+		})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return DeduplicateAndSort(listeners), nil
+}
+
+// ParseProcNetUDP6 parses Linux /proc/net/udp6 format.
+func ParseProcNetUDP6(r io.Reader) ([]domain.Listener, error) {
+	var listeners []domain.Listener
+	scanner := bufio.NewScanner(r)
+	isHeader := true
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if isHeader {
+			isHeader = false
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+
+		// rem_address must be all zeros for listening/unconnected
+		if len(fields) > 2 && !strings.HasPrefix(fields[2], "00000000000000000000000000000000:") {
+			continue
+		}
+
+		parts := strings.Split(fields[1], ":")
+		if len(parts) != 2 {
+			continue
+		}
+
+		portHex, err := strconv.ParseUint(parts[1], 16, 16)
+		if err != nil {
+			continue
+		}
+
+		hexStr := parts[0]
+		if len(hexStr) != 32 {
+			continue
+		}
+
+		// /proc/net/udp6 encodes IPv6 in 4 32-bit little-endian words
+		ipBytes := make([]byte, 16)
+		for word := 0; word < 4; word++ {
+			chunk, err := hex.DecodeString(hexStr[word*8 : (word+1)*8])
+			if err != nil || len(chunk) != 4 {
+				break
+			}
+			ipBytes[word*4+0] = chunk[3]
+			ipBytes[word*4+1] = chunk[2]
+			ipBytes[word*4+2] = chunk[1]
+			ipBytes[word*4+3] = chunk[0]
+		}
+
+		ip := net.IP(ipBytes)
+		var addrStr string
+		if v4 := ip.To4(); v4 != nil {
+			addrStr = v4.String()
+		} else {
+			addrStr = ip.String()
+		}
+
+		listeners = append(listeners, domain.Listener{
+			Protocol:    "udp",
+			Address:     NormalizeAddress(addrStr),
+			Port:        uint16(portHex),
+			PID:         0,
+			ProcessName: "",
+		})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return DeduplicateAndSort(listeners), nil
+}
+
+// DeduplicateAndSort eliminates identical listener entries and sorts by Port, Protocol, then Address.
 func DeduplicateAndSort(listeners []domain.Listener) []domain.Listener {
 	seen := make(map[string]domain.Listener)
 
@@ -337,6 +501,9 @@ func DeduplicateAndSort(listeners []domain.Listener) []domain.Listener {
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Port != result[j].Port {
 			return result[i].Port < result[j].Port
+		}
+		if result[i].Protocol != result[j].Protocol {
+			return result[i].Protocol < result[j].Protocol
 		}
 		return result[i].Address < result[j].Address
 	})

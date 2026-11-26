@@ -1,0 +1,41 @@
+name: Welcome First-Time Contributors
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  welcome:
+    name: Greet First Contributor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send First Interaction Greeting
+        uses: actions/first-interaction@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-message: |
+            Thank you for opening your first issue in Lantern.
+
+            If reporting a bug or unexpected behavior, please include:
+            1. Operating system and architecture.
+            2. Container runtime and version (Docker or Podman, if applicable).
+            3. Diagnostics output from `lantern doctor`.
+
+            Maintainers will review your submission shortly.
+          pr-message: |
+            Thank you for your first contribution to Lantern.
+
+            Before maintainers review your pull request, please ensure:
+            1. Conventional Commits: PR title and commit messages follow `<type>(<scope>): <summary>` (e.g. `feat(doctor): add Podman detection`).
+            2. DCO Sign-Off: All commits are signed off (`git commit -s`).
+            3. Zero-Emoji Policy: Lantern enforces a strict zero-emoji policy across all code, tests, documentation, and commit messages.
+            4. Local Verification: Run `go test -race ./...` locally before pushing to confirm all checks pass.
+
+            Please review [CONTRIBUTING.md](https://github.com/DhyaanKanoja11/Lantern/blob/main/CONTRIBUTING.md) for full guidelines.

@@ -25,6 +25,10 @@ func (m *mockFixAnalyzer) Why(ctx context.Context, port uint16, projectDir strin
 	return m.exposure, nil
 }
 
+func (m *mockFixAnalyzer) WhyWithProto(ctx context.Context, port uint16, proto string, projectDir string) (*domain.Exposure, error) {
+	return m.Why(ctx, port, projectDir)
+}
+
 func (m *mockFixAnalyzer) Scan(ctx context.Context) ([]domain.ExposureSummary, error) {
 	return nil, nil
 }

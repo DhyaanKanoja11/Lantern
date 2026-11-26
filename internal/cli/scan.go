@@ -24,11 +24,12 @@ var (
 	scanConfigFile     string
 	scanFormat         string
 	scanJSON           bool
+	scanProto          string
 )
 
 var scanCmd = &cobra.Command{
 	Use:   "scan",
-	Short: "Discover TCP listening services",
+	Short: "Discover TCP and UDP listening services",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var cfg *policy.Config
 		var err error
@@ -82,6 +83,16 @@ func runScanOnce(ctx context.Context, cmd *cobra.Command, analyzer exposure.Anal
 	report, err := analyzer.ScanReport(ctx)
 	if err != nil {
 		return err
+	}
+
+	if scanProto != "" {
+		var filtered []domain.ExposureSummary
+		for _, s := range report.Summaries {
+			if strings.EqualFold(s.Protocol, scanProto) {
+				filtered = append(filtered, s)
+			}
+		}
+		report.Summaries = filtered
 	}
 
 	if err := formatter.RenderScan(cmd.OutOrStdout(), report.Summaries, report.Notices...); err != nil {
@@ -243,6 +254,7 @@ func init() {
 	scanCmd.Flags().StringVarP(&scanConfigFile, "config", "c", "", "Path to .lantern.yaml policy configuration file")
 	scanCmd.Flags().StringVarP(&scanFormat, "format", "f", "text", "Output format: text, json, sarif")
 	scanCmd.Flags().BoolVar(&scanJSON, "json", false, "Output results as JSON (alias for --format json)")
+	scanCmd.Flags().StringVar(&scanProto, "proto", "", "Filter listeners by protocol: tcp or udp (default all)")
 }
 
 func evaluateWildcardViolations(summaries []domain.ExposureSummary, ignorePorts []int) []domain.ExposureSummary {

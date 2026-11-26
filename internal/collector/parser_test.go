@@ -279,3 +279,126 @@ func TestSplitAddressPort_StripsZone(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSSLine_UDP(t *testing.T) {
+	tests := []struct {
+		name        string
+		line        string
+		expected    *domain.Listener
+		expectNil   bool
+		expectError bool
+	}{
+		{
+			name: "UDP UNCONN without Netid",
+			line: `UNCONN 0 0 0.0.0.0:5353 0.0.0.0:* users:(("avahi-daemon",pid=600,fd=12))`,
+			expected: &domain.Listener{
+				Protocol:    "udp",
+				Address:     "0.0.0.0",
+				Port:        5353,
+				PID:         600,
+				ProcessName: "avahi-daemon",
+			},
+		},
+		{
+			name: "UDP with Netid column",
+			line: `udp UNCONN 0 0 127.0.0.1:53 0.0.0.0:* users:(("systemd-resolve",pid=412,fd=13))`,
+			expected: &domain.Listener{
+				Protocol:    "udp",
+				Address:     "127.0.0.1",
+				Port:        53,
+				PID:         412,
+				ProcessName: "systemd-resolve",
+			},
+		},
+		{
+			name: "TCP with Netid column",
+			line: `tcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=842,fd=3))`,
+			expected: &domain.Listener{
+				Protocol:    "tcp",
+				Address:     "0.0.0.0",
+				Port:        22,
+				PID:         842,
+				ProcessName: "sshd",
+			},
+		},
+		{
+			name:      "UDP ESTAB ignored",
+			line:      `udp ESTAB 0 0 192.168.1.10:54321 8.8.8.8:53 users:(("client",pid=999,fd=3))`,
+			expectNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseSSLine(tt.line)
+			if tt.expectError && err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !tt.expectError && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.expectNil {
+				if got != nil {
+					t.Fatalf("expected nil listener, got %+v", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("expected non-nil listener")
+			}
+			if *got != *tt.expected {
+				t.Errorf("got %+v, want %+v", *got, *tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseProcNetUDP(t *testing.T) {
+	fixture := `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode ref pointer drops
+   0: 00000000:007B 00000000:0000 07 00000000:00000000 00:00000000 00000000     0        0 12345 2 0000000000000000 0
+   1: 0100007F:0035 00000000:0000 07 00000000:00000000 00:00000000 00000000   101        0 23456 2 0000000000000000 0
+   2: 0100007F:C000 0100007F:0035 01 00000000:00000000 00:00000000 00000000  1000        0 34567 2 0000000000000000 0
+`
+
+	listeners, err := ParseProcNetUDP(strings.NewReader(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error parsing /proc/net/udp: %v", err)
+	}
+
+	// Entry 2 is connected to peer (rem_address is not 00000000:0000), so 2 listeners expected:
+	// Port 123 (0.0.0.0) and Port 53 (127.0.0.1)
+	if len(listeners) != 2 {
+		t.Fatalf("expected 2 listeners, got %d", len(listeners))
+	}
+
+	if listeners[0].Port != 53 || listeners[0].Protocol != "udp" || listeners[0].Address != "127.0.0.1" {
+		t.Errorf("unexpected entry 0: %+v", listeners[0])
+	}
+	if listeners[1].Port != 123 || listeners[1].Protocol != "udp" || listeners[1].Address != "0.0.0.0" {
+		t.Errorf("unexpected entry 1: %+v", listeners[1])
+	}
+}
+
+func TestDeduplicateAndSort_TCPAndUDP(t *testing.T) {
+	input := []domain.Listener{
+		{Protocol: "udp", Address: "0.0.0.0", Port: 53, ProcessName: "named-udp", PID: 201},
+		{Protocol: "tcp", Address: "0.0.0.0", Port: 53, ProcessName: "named-tcp", PID: 200},
+		{Protocol: "tcp", Address: "127.0.0.1", Port: 8080, ProcessName: "node", PID: 300},
+	}
+
+	result := DeduplicateAndSort(input)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 listeners, got %d", len(result))
+	}
+
+	// On port 53, TCP should sort before UDP
+	if result[0].Port != 53 || result[0].Protocol != "tcp" {
+		t.Errorf("expected entry 0 to be port 53 tcp, got: %+v", result[0])
+	}
+	if result[1].Port != 53 || result[1].Protocol != "udp" {
+		t.Errorf("expected entry 1 to be port 53 udp, got: %+v", result[1])
+	}
+	if result[2].Port != 8080 || result[2].Protocol != "tcp" {
+		t.Errorf("expected entry 2 to be port 8080 tcp, got: %+v", result[2])
+	}
+}

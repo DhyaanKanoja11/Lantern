@@ -22,7 +22,7 @@ func NewTextFormatter() *TextFormatter {
 // Optional diagnostic notices (e.g. Docker daemon warnings) are rendered beneath the table.
 func (t *TextFormatter) RenderScan(w io.Writer, list []domain.ExposureSummary, notices ...string) error {
 	if len(list) == 0 {
-		fmt.Fprintln(w, "No active TCP listening sockets detected.")
+		fmt.Fprintln(w, "No active listening sockets detected.")
 		for _, n := range notices {
 			fmt.Fprintf(w, "\nNote: %s\n", n)
 		}
@@ -30,7 +30,7 @@ func (t *TextFormatter) RenderScan(w io.Writer, list []domain.ExposureSummary, n
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 8, 4, ' ', 0)
-	fmt.Fprintln(tw, "PORT\tADDRESS\tPROCESS\tCONTAINER\tREACHABILITY")
+	fmt.Fprintln(tw, "PORT\tPROTO\tADDRESS\tPROCESS\tCONTAINER\tREACHABILITY")
 	for _, s := range list {
 		cName := s.ContainerName
 		if cName == "" {
@@ -44,7 +44,11 @@ func (t *TextFormatter) RenderScan(w io.Writer, list []domain.ExposureSummary, n
 		if reach == "" {
 			reach = "unknown"
 		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", s.Port, s.Address, proc, cName, reach)
+		proto := strings.ToUpper(s.Protocol)
+		if proto == "" {
+			proto = "TCP"
+		}
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\n", s.Port, proto, s.Address, proc, cName, reach)
 	}
 	if err := tw.Flush(); err != nil {
 		return err

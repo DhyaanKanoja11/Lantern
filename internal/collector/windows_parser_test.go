@@ -70,3 +70,35 @@ UDP   0.0.0.0:123 *:0 4
 		t.Errorf("expected 0 listeners, got %d", len(listeners))
 	}
 }
+
+func TestParseWindowsNetstat_UDP(t *testing.T) {
+	sample := `
+Active Connections
+
+  Proto  Local Address          Foreign Address        State           PID
+  UDP    0.0.0.0:123            *:*                                    10400
+  UDP    127.0.0.1:5353         *:*                                    24084
+  UDP    0.0.0.0:56399          192.178.211.84:443                     25908
+  TCP    0.0.0.0:22             0.0.0.0:0              LISTENING       6620
+`
+
+	listeners, err := ParseWindowsNetstat(strings.NewReader(sample))
+	if err != nil {
+		t.Fatalf("unexpected netstat parse error: %v", err)
+	}
+
+	// Connected UDP socket on 56399 is excluded, so 3 listeners: TCP 22, UDP 123, UDP 5353
+	if len(listeners) != 3 {
+		t.Fatalf("expected 3 listening sockets, got %d: %+v", len(listeners), listeners)
+	}
+
+	if listeners[0].Port != 22 || listeners[0].Protocol != "tcp" {
+		t.Errorf("expected entry 0 to be tcp:22, got %+v", listeners[0])
+	}
+	if listeners[1].Port != 123 || listeners[1].Protocol != "udp" || listeners[1].PID != 10400 {
+		t.Errorf("expected entry 1 to be udp:123, got %+v", listeners[1])
+	}
+	if listeners[2].Port != 5353 || listeners[2].Protocol != "udp" || listeners[2].PID != 24084 {
+		t.Errorf("expected entry 2 to be udp:5353, got %+v", listeners[2])
+	}
+}

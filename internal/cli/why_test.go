@@ -107,3 +107,13 @@ func TestWhyCommand_FormatFlags(t *testing.T) {
 		t.Errorf("expected unsupported format error, got: %v", err)
 	}
 }
+
+func TestWhyCommand_ProtoFlag(t *testing.T) {
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+
+	rootCmd.SetArgs([]string{"why", "5353", "--proto", "udp"})
+	_ = rootCmd.Execute()
+}

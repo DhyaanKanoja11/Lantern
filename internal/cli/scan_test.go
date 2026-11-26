@@ -210,6 +210,10 @@ func (m *mockScanAnalyzer) Why(ctx context.Context, port uint16, projectDir stri
 	return nil, nil
 }
 
+func (m *mockScanAnalyzer) WhyWithProto(ctx context.Context, port uint16, proto string, projectDir string) (*domain.Exposure, error) {
+	return nil, nil
+}
+
 func TestRunScanOnce_Formats(t *testing.T) {
 	// Isolate from CI runner step summary so mock test data does not pollute job summaries
 	t.Setenv("GITHUB_STEP_SUMMARY", "")
@@ -250,5 +254,38 @@ func TestRunScanOnce_Formats(t *testing.T) {
 	}
 	if !strings.Contains(sarifBuf.String(), "\"version\": \"2.1.0\"") {
 		t.Errorf("expected SARIF output to contain version 2.1.0, got: %s", sarifBuf.String())
+	}
+}
+
+func TestRunScanOnce_ProtoFilter(t *testing.T) {
+	ctx := context.Background()
+	cmd := scanCmd
+
+	mockAn := &mockScanAnalyzer{
+		report: &domain.ScanReport{
+			Summaries: []domain.ExposureSummary{
+				{Port: 5432, Protocol: "tcp", Address: "0.0.0.0", ProcessName: "postgres"},
+				{Port: 5353, Protocol: "udp", Address: "0.0.0.0", ProcessName: "avahi-daemon"},
+			},
+		},
+	}
+
+	// Filter by udp
+	scanProto = "udp"
+	defer func() { scanProto = "" }()
+
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	formatter := output.NewTextFormatter()
+	if err := runScanOnce(ctx, cmd, mockAn, formatter, false, nil); err != nil {
+		t.Fatalf("runScanOnce failed: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "5353") || !strings.Contains(out, "UDP") {
+		t.Errorf("expected UDP 5353 in output, got: %s", out)
+	}
+	if strings.Contains(out, "5432") {
+		t.Errorf("expected TCP 5432 to be filtered out, got: %s", out)
 	}
 }

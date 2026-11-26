@@ -35,12 +35,25 @@ func newDarwinCollectorWithRunner(runner darwinCommandRunner) *darwinCollector {
 }
 
 func (c *darwinCollector) CollectListeners(ctx context.Context) ([]domain.Listener, error) {
-	out, err := c.runner(ctx, "lsof", "-iTCP", "-sTCP:LISTEN", "-P", "-n")
-	if err != nil {
-		return nil, fmt.Errorf("failed to discover listeners via lsof on macOS: %w", err)
+	var combined bytes.Buffer
+
+	// 1. Collect TCP listening sockets
+	if tcpOut, err := c.runner(ctx, "lsof", "-iTCP", "-sTCP:LISTEN", "-P", "-n"); err == nil && len(tcpOut) > 0 {
+		combined.Write(tcpOut)
+		combined.WriteByte('\n')
 	}
 
-	return ParseDarwinLsof(bytes.NewReader(out))
+	// 2. Collect UDP listening sockets
+	if udpOut, err := c.runner(ctx, "lsof", "-iUDP", "-P", "-n"); err == nil && len(udpOut) > 0 {
+		combined.Write(udpOut)
+		combined.WriteByte('\n')
+	}
+
+	if combined.Len() == 0 {
+		return nil, fmt.Errorf("failed to discover listeners via lsof on macOS")
+	}
+
+	return ParseDarwinLsof(&combined)
 }
 
 func (c *darwinCollector) FindListenerByPort(ctx context.Context, port uint16) (*domain.Listener, error) {

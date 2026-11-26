@@ -35,7 +35,7 @@ func newWindowsCollectorWithRunner(runner windowsCommandRunner) *windowsCollecto
 }
 
 func (c *windowsCollector) CollectListeners(ctx context.Context) ([]domain.Listener, error) {
-	out, err := c.runner(ctx, "netstat", "-ano", "-p", "tcp")
+	out, err := c.runner(ctx, "netstat", "-ano")
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute netstat on Windows: %w", err)
 	}

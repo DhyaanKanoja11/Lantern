@@ -14,6 +14,7 @@ import (
 var (
 	whyFormat string
 	whyJSON   bool
+	whyProto  string
 )
 
 var whyCmd = &cobra.Command{
@@ -55,10 +56,14 @@ var whyCmd = &cobra.Command{
 		}
 
 		analyzer := exposure.NewDefaultAnalyzer()
-		exp, err := analyzer.Why(cmd.Context(), uint16(portVal), ".")
+		exp, err := analyzer.WhyWithProto(cmd.Context(), uint16(portVal), whyProto, ".")
 		if err != nil {
 			if errors.Is(err, exposure.ErrNoListener) {
-				fmt.Fprintf(cmd.OutOrStdout(), "No listening service found on port %d.\n", portVal)
+				if whyProto != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), "No listening service found on %s port %d.\n", strings.ToUpper(whyProto), portVal)
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "No listening service found on port %d.\n", portVal)
+				}
 				return nil
 			}
 			return err
@@ -71,4 +76,5 @@ var whyCmd = &cobra.Command{
 func init() {
 	whyCmd.Flags().StringVarP(&whyFormat, "format", "f", "text", "Output format: text, json, sarif")
 	whyCmd.Flags().BoolVar(&whyJSON, "json", false, "Output result as JSON (alias for --format json)")
+	whyCmd.Flags().StringVarP(&whyProto, "proto", "P", "", "Filter by protocol: tcp or udp (default auto)")
 }

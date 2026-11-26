@@ -7,9 +7,9 @@ import (
 	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
-// exposureRank orders bind addresses by how much of the network can reach
+// ExposureRank orders bind addresses by how much of the network can reach
 // them: wildcard > specific non-loopback > loopback.
-func exposureRank(addr string) int {
+func ExposureRank(addr string) int {
 	a := strings.Trim(strings.TrimSpace(addr), "[]")
 	if i := strings.Index(a, "%"); i != -1 {
 		a = a[:i]
@@ -29,6 +29,10 @@ func exposureRank(addr string) int {
 	default:
 		return 1
 	}
+}
+
+func exposureRank(addr string) int {
+	return ExposureRank(addr)
 }
 
 // MostExposed returns the listener whose bind address is reachable from the
