@@ -325,9 +325,10 @@ func RenderDoctor(w io.Writer, checks []DoctorCheck) {
 	fmt.Fprintln(w)
 	for _, c := range checks {
 		symbol := "[OK]  "
-		if c.Status == "WARN" {
+		switch c.Status {
+		case "WARN":
 			symbol = "[WARN]"
-		} else if c.Status == "FAIL" {
+		case "FAIL":
 			symbol = "[FAIL]"
 		}
 		fmt.Fprintf(w, " %s %s: %s\n", symbol, c.Name, c.Message)

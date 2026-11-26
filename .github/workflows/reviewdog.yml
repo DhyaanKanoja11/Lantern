@@ -8,6 +8,7 @@ on:
       - 'go.mod'
       - 'go.sum'
       - '.golangci.yml'
+      - '.github/workflows/reviewdog.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -26,16 +27,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v7
 
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: '1.23'
-          cache: true
-
       - name: Run golangci-lint with reviewdog
         uses: reviewdog/action-golangci-lint@v2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          go_version: '1.23'
           reporter: github-pr-review
           filter_mode: added
           fail_level: warning

@@ -154,8 +154,8 @@ func TestWriteGitHubStepSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_ = tmpFile.Close()
 
 	t.Setenv("GITHUB_STEP_SUMMARY", tmpFile.Name())
 

@@ -108,9 +108,9 @@ func FormatUnifiedDiff(relPath string, origBytes, modBytes []byte, targetLine in
 	startLineNum := startIdx + 1
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("--- a/%s\n", relPath))
-	b.WriteString(fmt.Sprintf("+++ b/%s\n", relPath))
-	b.WriteString(fmt.Sprintf("@@ -%d,%d +%d,%d @@\n", startLineNum, hunkLineCount, startLineNum, hunkLineCount))
+	fmt.Fprintf(&b, "--- a/%s\n", relPath)
+	fmt.Fprintf(&b, "+++ b/%s\n", relPath)
+	fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n", startLineNum, hunkLineCount, startLineNum, hunkLineCount)
 
 	// Context before
 	for i := startIdx; i < targetIdx; i++ {

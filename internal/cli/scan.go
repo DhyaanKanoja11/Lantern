@@ -160,20 +160,20 @@ func writeGitHubStepSummary(summaries []domain.ExposureSummary, violations []dom
 				}
 			}
 
-			sb.WriteString(fmt.Sprintf("| `%d` | %s | `%s` | %s | %s | %s |\n",
-				s.Port, s.Protocol, s.Address, target, s.Reachability, status))
+			fmt.Fprintf(&sb, "| `%d` | %s | `%s` | %s | %s | %s |\n",
+				s.Port, s.Protocol, s.Address, target, s.Reachability, status)
 		}
 	}
 
 	if len(violations) > 0 {
-		sb.WriteString(fmt.Sprintf("\n> [POLICY VIOLATION] %d wildcard exposure policy violation(s) detected. Run `lantern why <port>` or `lantern fix <port>` to remediate.\n", len(violations)))
+		fmt.Fprintf(&sb, "\n> [POLICY VIOLATION] %d wildcard exposure policy violation(s) detected. Run `lantern why <port>` or `lantern fix <port>` to remediate.\n", len(violations))
 	} else {
 		sb.WriteString("\n> [PASS] All active network listeners comply with security policy.\n")
 	}
 
 	f, err := os.OpenFile(summaryPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
 	if err == nil {
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		_, _ = f.WriteString(sb.String())
 	}
 }
