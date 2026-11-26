@@ -13,7 +13,29 @@ Lantern is a local-first security CLI for developers. Instead of merely listing 
 
 > **Deep Dive**: Read the architectural breakdown on [Why Docker Silently Binds to 0.0.0.0 (And How to Trace Port Causality in Go)](https://dev.to/dhyaan_k/why-docker-silently-binds-to-0000-and-how-to-trace-port-causality-in-go-26p9).
 
-![Lantern Configuration Causality Architecture](docs/assets/lantern-causality.svg)
+![Lantern Terminal Demo](docs/assets/lantern-demo.svg)
+
+*Terminal demo reproducible via [`docs/demo.tape`](docs/demo.tape).*
+
+### Quick Install
+
+```bash
+# Linux / macOS / WSL2
+curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | bash
+
+# Homebrew (macOS / Linuxbrew)
+brew install DhyaanKanoja11/tap/lantern
+
+# Go 1.22+
+go install github.com/DhyaanKanoja11/Lantern/cmd/lantern@latest
+```
+
+```powershell
+# Windows (PowerShell / Scoop)
+irm https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.ps1 | iex
+```
+
+See [Section 4 (Installation)](#4-installation) for `.deb`, `.rpm`, AUR, Scoop, GitHub Actions CI, and verification checksums.
 
 ---
 
@@ -46,7 +68,9 @@ Lantern was built to solve this problem from the inside out.
 
 Lantern operates passively on your workstation without generating external network traffic:
 
-1. **Passive Socket Collection**: Discovers active TCP listening sockets directly from the operating system (`ss` and `/proc/net/tcp`).
+![Lantern Configuration Causality Architecture](docs/assets/lantern-causality.svg)
+
+1. **Passive Socket Collection**: Discovers active TCP and UDP listening sockets directly from the operating system (`ss` and `/proc/net` on Linux, `lsof` on macOS, `netstat` on Windows).
 2. **Process & Container Attribution**: Attributes sockets to processes and Docker containers (`docker-proxy` or direct process FDs).
 3. **Causal Source-Line Resolution**: Parses Docker Compose files using YAML Abstract Syntax Tree (AST) parsing to locate the exact service declaration and line number.
 4. **Reachability Classification**: Enumerates host network interfaces (`net.Interfaces()`) to classify whether a listening socket is restricted to loopback (`127.0.0.1`), accessible to the local network (`LAN reachable`), or bound to a VPN.
@@ -60,9 +84,10 @@ Lantern operates passively on your workstation without generating external netwo
 
 ```text
 $ lantern scan
-PORT    ADDRESS    PROCESS         CONTAINER    REACHABILITY
-5432    0.0.0.0    docker-proxy    postgres     LAN reachable
-8080    127.0.0.1  node            -            localhost only
+PORT     PROTO    ADDRESS      PROCESS         CONTAINER    REACHABILITY
+5432     TCP      0.0.0.0      docker-proxy    postgres     LAN reachable
+5353     UDP      0.0.0.0      avahi-daemon    -            LAN reachable
+8080     TCP      127.0.0.1    node            -            localhost only
 ```
 
 ### Causal Explanation (`lantern why 5432`)
@@ -205,7 +230,7 @@ The script automatically:
 
 To install a specific version:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | LANTERN_VERSION=v0.3.0 bash
+curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | LANTERN_VERSION=v0.4.1 bash
 ```
 
 To uninstall:
@@ -318,7 +343,7 @@ Audit your Docker Compose configurations in GitHub Actions CI using the official
 
 ```yaml
 - name: Run Lantern Preflight
-  uses: DhyaanKanoja11/Lantern@v0.4.0
+  uses: DhyaanKanoja11/Lantern@v0.4.1
   with:
     command: 'preflight'
     file: 'docker-compose.yml'
@@ -328,7 +353,7 @@ To fail CI on accidental wildcard exposures (`0.0.0.0` or `::`):
 
 ```yaml
 - name: Audit Port Exposure
-  uses: DhyaanKanoja11/Lantern@v0.4.0
+  uses: DhyaanKanoja11/Lantern@v0.4.1
   with:
     command: 'scan'
     fail-on-wildcard: 'true'
@@ -396,8 +421,8 @@ docker compose down
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
-| `lantern scan` | Discovers active TCP listeners. Supports output formats (`text`, `json`, `sarif`), live watch mode (`-w`), team policy (`.lantern.yaml`), and CI enforcement (`--fail-on-wildcard`). | `lantern scan --format sarif` |
-| `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Supports `--format json` / `--format sarif`. | `lantern why 5432 --json` |
+| `lantern scan` | Discovers active TCP and UDP listeners. Supports `--proto` filtering (`tcp`/`udp`), output formats (`text`, `json`, `sarif`), live watch mode (`-w`), team policy (`.lantern.yaml`), and CI enforcement (`--fail-on-wildcard`). | `lantern scan --format sarif` |
+| `lantern why <port>` | Explains the complete causal exposure path from network socket to configuration source line. Supports `--proto`, `--format json` / `--format sarif`. | `lantern why 5432 --json` |
 | `lantern free <port>` | Context-aware port freeing: cleanly stops Docker containers or terminates native processes occupying a port. Aliased as `lantern kill`. | `lantern free 5432` |
 | `lantern preflight [file ...]` | Preflight collision checker: detects port conflicts and wildcard exposures before running `docker compose up`. Automatically merges sibling `docker-compose.override.yml` files or accepts multiple Compose files. | `lantern preflight compose.yaml compose.prod.yaml --json` |
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
@@ -471,7 +496,7 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/DhyaanKanoja11/Lantern
-    rev: v0.3.0
+    rev: v0.4.1
     hooks:
       - id: lantern-scan
         args: ["--fail-on-wildcard", "--ignore-ports", "80,443"]
@@ -521,7 +546,7 @@ npx -y @smithery/cli install DhyaanKanoja11/Lantern --client claude
 
 | Tool Name | Parameters | Description |
 | :--- | :--- | :--- |
-| `lantern_scan` | *(none)* | Scans active TCP listeners on the host, returning structured process, container, and reachability classifications. |
+| `lantern_scan` | *(none)* | Scans active TCP and UDP listeners on the host, returning structured process, container, and reachability classifications. |
 | `lantern_why` | `port` (int) | Traces causal exposure path for a port down to the exact `docker-compose.yml` service and line number. |
 | `lantern_free` | `port` (int), `force` (bool) | Safely reclaims an occupied port by cleanly stopping its Docker container or terminating its host process. `force=true` kills immediately instead of shutting down gracefully. |
 | `lantern_preflight` | `file_path` (string) | Pre-inspects a Compose file to detect and prevent `EADDRINUSE` port collisions and wildcard exposures before container startup. |
@@ -563,7 +588,7 @@ Lantern does not compete with network scanners or socket dumpers; it bridges the
 
 ### Technical Capabilities & Guardrails
 
-- **Cross-Platform Socket Inspection**: Socket discovery operates natively without virtual machines: Linux uses `ss` and `/proc/net/tcp`, macOS uses native `lsof -iTCP -sTCP:LISTEN`, and Windows uses native Win32 `netstat -ano -p tcp`.
+- **Cross-Platform Socket Inspection**: Socket discovery operates natively for TCP and UDP without virtual machines: Linux uses `ss` (`ss -lntupH` / `ss -lntpH`) and `/proc/net/{tcp,tcp6,udp,udp6}`, macOS uses native `lsof -iTCP -sTCP:LISTEN` and `lsof -iUDP`, and Windows uses native Win32 `netstat -ano`.
 - **Unprivileged Process Inspection & Inferred Attribution**: When running as an unprivileged user on Linux (UID > 0), root-owned sockets (such as `docker-proxy`) cannot have their PIDs or file descriptors read directly from `/proc`. Lantern automatically falls back to Docker published port metadata inference, clearly tagging the attribution as `INFERRED`, rendering an explicit `ATTRIBUTION NOTICE` explaining the unverified PID in `lantern why`, and restricting `lantern fix` to read-only `--dry-run` diffs until verified with root/sudo.
 - **Docker Daemon Diagnostic Guidance**: If the Docker daemon is stopped, socket permission is denied, or the Docker CLI is not installed, `lantern scan` continues to collect and display listening host sockets while rendering actionable diagnostic notices beneath the table.
 - **Supported Remediation Scope**: `lantern fix` is strictly designed for Docker Compose configurations. It does not attempt to modify arbitrary native application configurations (e.g., PostgreSQL `postgresql.conf` or Redis `redis.conf`) where configuration syntaxes vary unpredictably.
@@ -599,6 +624,7 @@ For an in-depth explanation of Lantern's internal layering, package boundaries, 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — Layered architecture, domain purity, and data pipeline.
 - [Why Docker Silently Binds to 0.0.0.0](https://dev.to/dhyaan_k/why-docker-silently-binds-to-0000-and-how-to-trace-port-causality-in-go-26p9) — DEV Community technical deep dive on port causality and exposure detection.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Local development workflow, code style, and PR guidelines.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Community standards and enforcement guidelines.
 - [`SECURITY.md`](SECURITY.md) — Security policy and vulnerability disclosure procedures.
 - [`CHANGELOG.md`](CHANGELOG.md) — Version history and release notes.
 
