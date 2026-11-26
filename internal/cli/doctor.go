@@ -7,7 +7,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/DhyaanKanoja11/Lantern/internal/collector"
 	"github.com/DhyaanKanoja11/Lantern/internal/docker"
@@ -21,29 +24,62 @@ type DoctorCheck struct {
 	Message string
 }
 
+type doctorDeps struct {
+	goos              string
+	geteuid           func() int
+	getenv            func(string) string
+	lookPath          func(string) (string, error)
+	stat              func(string) (os.FileInfo, error)
+	isDockerAvailable func(context.Context) bool
+	interfaces        func() ([]net.Interface, error)
+	checkListeners    func(context.Context) error
+}
+
+func defaultDoctorDeps() doctorDeps {
+	return doctorDeps{
+		goos:     runtime.GOOS,
+		geteuid:  os.Geteuid,
+		getenv:   os.Getenv,
+		lookPath: exec.LookPath,
+		stat:     os.Stat,
+		isDockerAvailable: func(ctx context.Context) bool {
+			return docker.NewDefaultCorrelator().IsAvailable(ctx)
+		},
+		interfaces: net.Interfaces,
+		checkListeners: func(ctx context.Context) error {
+			_, err := collector.NewDefaultCollector().CollectListeners(ctx)
+			return err
+		},
+	}
+}
+
 // RunDoctorChecks performs environment readiness diagnostics.
 func RunDoctorChecks(ctx context.Context) []DoctorCheck {
+	return runDoctorChecksWithDeps(ctx, defaultDoctorDeps())
+}
+
+func runDoctorChecksWithDeps(ctx context.Context, deps doctorDeps) []DoctorCheck {
 	var checks []DoctorCheck
 
 	// 1. Operating System
-	switch runtime.GOOS {
+	switch deps.goos {
 	case "linux", "darwin", "windows":
 		checks = append(checks, DoctorCheck{
 			Name:    "Operating System",
 			Status:  "OK",
-			Message: fmt.Sprintf("%s detected (native socket and process inspection supported)", runtime.GOOS),
+			Message: fmt.Sprintf("%s detected (native socket and process inspection supported)", deps.goos),
 		})
 	default:
 		checks = append(checks, DoctorCheck{
 			Name:    "Operating System",
 			Status:  "WARN",
-			Message: fmt.Sprintf("%s detected (live socket inspection requires Linux, macOS, or Windows)", runtime.GOOS),
+			Message: fmt.Sprintf("%s detected (live socket inspection requires Linux, macOS, or Windows)", deps.goos),
 		})
 	}
 
 	// 2. Process Privilege Level (Linux)
-	if runtime.GOOS == "linux" {
-		if os.Geteuid() != 0 {
+	if deps.goos == "linux" {
+		if deps.geteuid() != 0 {
 			checks = append(checks, DoctorCheck{
 				Name:    "Process Privilege Level",
 				Status:  "WARN",
@@ -59,9 +95,9 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 	}
 
 	// 3. Socket Inspection Tool
-	switch runtime.GOOS {
+	switch deps.goos {
 	case "linux":
-		if p, err := exec.LookPath("ss"); err == nil {
+		if p, err := deps.lookPath("ss"); err == nil {
 			checks = append(checks, DoctorCheck{
 				Name:    "Socket Inspection Tool (ss)",
 				Status:  "OK",
@@ -75,7 +111,7 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 			})
 		}
 	case "darwin":
-		if p, err := exec.LookPath("lsof"); err == nil {
+		if p, err := deps.lookPath("lsof"); err == nil {
 			checks = append(checks, DoctorCheck{
 				Name:    "Socket Inspection Tool (lsof)",
 				Status:  "OK",
@@ -89,7 +125,7 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 			})
 		}
 	case "windows":
-		if p, err := exec.LookPath("netstat"); err == nil {
+		if p, err := deps.lookPath("netstat"); err == nil {
 			checks = append(checks, DoctorCheck{
 				Name:    "Socket Inspection Tool (netstat)",
 				Status:  "OK",
@@ -105,9 +141,9 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 	}
 
 	// 4. Process Discovery Mechanism
-	switch runtime.GOOS {
+	switch deps.goos {
 	case "linux":
-		if fi, err := os.Stat("/proc"); err == nil && fi.IsDir() {
+		if fi, err := deps.stat("/proc"); err == nil && fi.IsDir() {
 			checks = append(checks, DoctorCheck{
 				Name:    "Process Filesystem (/proc)",
 				Status:  "OK",
@@ -121,7 +157,7 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 			})
 		}
 	case "windows":
-		if p, err := exec.LookPath("tasklist"); err == nil {
+		if p, err := deps.lookPath("tasklist"); err == nil {
 			checks = append(checks, DoctorCheck{
 				Name:    "Process Inspection Tool (tasklist)",
 				Status:  "OK",
@@ -135,7 +171,7 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 			})
 		}
 	case "darwin":
-		if p, err := exec.LookPath("ps"); err == nil {
+		if p, err := deps.lookPath("ps"); err == nil {
 			checks = append(checks, DoctorCheck{
 				Name:    "Process Inspection Tool (ps)",
 				Status:  "OK",
@@ -150,32 +186,11 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 		}
 	}
 
-	// 4. Docker CLI and Daemon
-	if dockerPath, err := exec.LookPath("docker"); err == nil {
-		correlator := docker.NewDefaultCorrelator()
-		if correlator.IsAvailable(ctx) {
-			checks = append(checks, DoctorCheck{
-				Name:    "Docker Environment",
-				Status:  "OK",
-				Message: fmt.Sprintf("Docker CLI (%s) and daemon reachable", dockerPath),
-			})
-		} else {
-			checks = append(checks, DoctorCheck{
-				Name:    "Docker Environment",
-				Status:  "WARN",
-				Message: fmt.Sprintf("Docker CLI found (%s), but daemon is not accessible", dockerPath),
-			})
-		}
-	} else {
-		checks = append(checks, DoctorCheck{
-			Name:    "Docker Environment",
-			Status:  "WARN",
-			Message: "Docker CLI not found in PATH (container correlation will be skipped)",
-		})
-	}
+	// 5. Container Engine (Docker or Podman)
+	checks = append(checks, checkContainerRuntime(ctx, deps))
 
-	// 5. Network Interface Enumeration
-	if ifaces, err := net.Interfaces(); err == nil && len(ifaces) > 0 {
+	// 6. Network Interface Enumeration
+	if ifaces, err := deps.interfaces(); err == nil && len(ifaces) > 0 {
 		checks = append(checks, DoctorCheck{
 			Name:    "Network Interfaces",
 			Status:  "OK",
@@ -189,9 +204,8 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 		})
 	}
 
-	// 6. Listener Collection Functional Check
-	col := collector.NewDefaultCollector()
-	if _, err := col.CollectListeners(ctx); err == nil {
+	// 7. Listener Collection Functional Check
+	if err := deps.checkListeners(ctx); err == nil {
 		checks = append(checks, DoctorCheck{
 			Name:    "Listener Collector",
 			Status:  "OK",
@@ -206,6 +220,103 @@ func RunDoctorChecks(ctx context.Context) []DoctorCheck {
 	}
 
 	return checks
+}
+
+func checkContainerRuntime(ctx context.Context, deps doctorDeps) DoctorCheck {
+	if dockerPath, err := deps.lookPath("docker"); err == nil {
+		if deps.isDockerAvailable(ctx) {
+			return DoctorCheck{
+				Name:    "Docker Environment",
+				Status:  "OK",
+				Message: fmt.Sprintf("Docker CLI (%s) and daemon reachable", dockerPath),
+			}
+		}
+		return DoctorCheck{
+			Name:    "Docker Environment",
+			Status:  "WARN",
+			Message: fmt.Sprintf("Docker CLI found (%s), but daemon is not accessible", dockerPath),
+		}
+	}
+
+	if podmanPath, err := deps.lookPath("podman"); err == nil {
+		candidates := podmanSocketCandidates(deps)
+		for _, sockPath := range candidates {
+			if fi, statErr := deps.stat(sockPath); statErr == nil && !fi.IsDir() {
+				return DoctorCheck{
+					Name:    "Container Engine (Podman)",
+					Status:  "OK",
+					Message: fmt.Sprintf("Podman CLI (%s) and socket (%s) detected (drop-in container engine)", podmanPath, sockPath),
+				}
+			}
+		}
+		if len(candidates) > 0 {
+			return DoctorCheck{
+				Name:    "Container Engine (Podman)",
+				Status:  "WARN",
+				Message: fmt.Sprintf("Podman CLI found (%s), but no Podman socket was detected (checked %s)", podmanPath, strings.Join(candidates, ", ")),
+			}
+		}
+		return DoctorCheck{
+			Name:    "Container Engine (Podman)",
+			Status:  "WARN",
+			Message: fmt.Sprintf("Podman CLI found (%s), but no Podman socket was detected", podmanPath),
+		}
+	}
+
+	return DoctorCheck{
+		Name:    "Container Runtime",
+		Status:  "WARN",
+		Message: "Docker or Podman CLI not found in PATH (container correlation will be skipped)",
+	}
+}
+
+func podmanSocketCandidates(deps doctorDeps) []string {
+	var raw []string
+
+	if dockerHost := strings.TrimSpace(deps.getenv("DOCKER_HOST")); dockerHost != "" {
+		switch {
+		case strings.HasPrefix(dockerHost, "unix://"):
+			raw = append(raw, strings.TrimPrefix(dockerHost, "unix://"))
+		case strings.HasPrefix(dockerHost, "npipe://"):
+			pipePath := strings.TrimPrefix(dockerHost, "npipe://")
+			pipePath = strings.ReplaceAll(pipePath, "/", "\\")
+			raw = append(raw, pipePath)
+		}
+	}
+	if xdgDir := strings.TrimSpace(deps.getenv("XDG_RUNTIME_DIR")); xdgDir != "" {
+		raw = append(raw, filepath.Join(xdgDir, "podman", "podman.sock"))
+	}
+
+	switch deps.goos {
+	case "linux":
+		if uid := deps.geteuid(); uid >= 0 {
+			raw = append(raw, filepath.Join("/run/user", strconv.Itoa(uid), "podman", "podman.sock"))
+		}
+		raw = append(raw, "/run/podman/podman.sock")
+	case "darwin":
+		if home := strings.TrimSpace(deps.getenv("HOME")); home != "" {
+			raw = append(raw, filepath.Join(home, ".local", "share", "containers", "podman", "machine", "podman.sock"))
+		}
+	case "windows":
+		raw = append(raw, `\\.\pipe\podman-machine-default`, `\\.\pipe\podman-machine-default-root`)
+		if userProfile := strings.TrimSpace(deps.getenv("USERPROFILE")); userProfile != "" {
+			raw = append(raw, filepath.Join(userProfile, ".local", "share", "containers", "podman", "machine", "podman.sock"))
+		}
+	}
+
+	seen := make(map[string]bool, len(raw))
+	var unique []string
+	for _, p := range raw {
+		clean := p
+		if !strings.HasPrefix(p, `\\.\pipe\`) {
+			clean = filepath.Clean(p)
+		}
+		if !seen[clean] {
+			seen[clean] = true
+			unique = append(unique, clean)
+		}
+	}
+	return unique
 }
 
 // RenderDoctor prints the doctor checks in a clean tabular format.

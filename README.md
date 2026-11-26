@@ -402,7 +402,7 @@ docker compose down
 | `lantern preflight [file ...]` | Preflight collision checker: detects port conflicts and wildcard exposures before running `docker compose up`. Automatically merges sibling `docker-compose.override.yml` files or accepts multiple Compose files. | `lantern preflight compose.yaml compose.prod.yaml --json` |
 | `lantern fix <port> [--dry-run]` | Interactively remedies supported Docker Compose wildcard exposures to localhost. | `lantern fix 5432 --dry-run` |
 | `lantern mcp` | Starts the Model Context Protocol (MCP) stdio server for AI agents (Claude Code, Cursor, Windsurf). | `lantern mcp` |
-| `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker CLI/daemon, and interfaces. | `lantern doctor` |
+| `lantern doctor` | Runs diagnostic probes checking host OS, `ss`, `/proc`, Docker or Podman CLI/socket availability, and interfaces. | `lantern doctor` |
 | `lantern completion <shell>` | Generates shell tab-completion scripts for `bash`, `zsh`, `fish`, and `powershell`. | `lantern completion fish` |
 | `lantern version` | Prints semantic version, commit hash, build date, and target architecture. | `lantern version` |
 | `lantern [command] --help` | Displays usage instructions, flag descriptions, and POSIX exit codes. | `lantern why --help` |
