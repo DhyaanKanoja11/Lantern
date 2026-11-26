@@ -219,32 +219,32 @@ case ":$PATH:" in
         case "$DETECTED_SHELL" in
             zsh)
                 printf "To use Lantern in your current terminal session:\n"
-                printf "    ${BOLD}export PATH=\"%s:\$PATH\"${RESET}\n\n" "$TARGET_DIR"
+                printf "    %bexport PATH=\"%s:\$PATH\"%b\n\n" "$BOLD" "$TARGET_DIR" "$RESET"
                 printf "To make this change persistent across new terminal sessions (Zsh):\n"
-                printf "    ${BOLD}echo 'export PATH=\"%s:\$PATH\"' >> ~/.zshrc${RESET}\n" "$TARGET_DIR"
-                printf "    ${BOLD}source ~/.zshrc${RESET}\n\n"
+                printf "    %becho 'export PATH=\"%s:\$PATH\"' >> ~/.zshrc%b\n" "$BOLD" "$TARGET_DIR" "$RESET"
+                printf "    %bsource ~/.zshrc%b\n\n" "$BOLD" "$RESET"
                 ;;
             bash)
                 printf "To use Lantern in your current terminal session:\n"
-                printf "    ${BOLD}export PATH=\"%s:\$PATH\"${RESET}\n\n" "$TARGET_DIR"
+                printf "    %bexport PATH=\"%s:\$PATH\"%b\n\n" "$BOLD" "$TARGET_DIR" "$RESET"
                 printf "To make this change persistent across new terminal sessions (Bash):\n"
                 if [ "$OS" = "darwin" ]; then
-                    printf "    ${BOLD}echo 'export PATH=\"%s:\$PATH\"' >> ~/.bash_profile${RESET}\n" "$TARGET_DIR"
-                    printf "    ${BOLD}source ~/.bash_profile${RESET}\n\n"
+                    printf "    %becho 'export PATH=\"%s:\$PATH\"' >> ~/.bash_profile%b\n" "$BOLD" "$TARGET_DIR" "$RESET"
+                    printf "    %bsource ~/.bash_profile%b\n\n" "$BOLD" "$RESET"
                 else
-                    printf "    ${BOLD}echo 'export PATH=\"%s:\$PATH\"' >> ~/.bashrc${RESET}\n" "$TARGET_DIR"
-                    printf "    ${BOLD}source ~/.bashrc${RESET}\n\n"
+                    printf "    %becho 'export PATH=\"%s:\$PATH\"' >> ~/.bashrc%b\n" "$BOLD" "$TARGET_DIR" "$RESET"
+                    printf "    %bsource ~/.bashrc%b\n\n" "$BOLD" "$RESET"
                 fi
                 ;;
             fish)
                 printf "To add Lantern permanently to your PATH in Fish shell:\n"
-                printf "    ${BOLD}fish_add_path %s${RESET}\n\n" "$TARGET_DIR"
+                printf "    %bfish_add_path %s%b\n\n" "$BOLD" "$TARGET_DIR" "$RESET"
                 ;;
             *)
                 printf "To use Lantern in your current terminal session:\n"
-                printf "    ${BOLD}export PATH=\"%s:\$PATH\"${RESET}\n\n" "$TARGET_DIR"
+                printf "    %bexport PATH=\"%s:\$PATH\"%b\n\n" "$BOLD" "$TARGET_DIR" "$RESET"
                 printf "To make this change persistent across new terminal sessions:\n"
-                printf "    Add ${BOLD}'export PATH=\"%s:\$PATH\"'${RESET} to your shell configuration (~/.profile, ~/.bashrc, or ~/.zshrc).\n\n" "$TARGET_DIR"
+                printf "    Add %b'export PATH=\"%s:\$PATH\"'%b to your shell configuration (~/.profile, ~/.bashrc, or ~/.zshrc).\n\n" "$BOLD" "$TARGET_DIR" "$RESET"
                 ;;
         esac
 
