@@ -12,8 +12,10 @@ import (
 )
 
 var (
-	preflightJSONFlag bool
-	preflightChecker  = preflight.NewChecker()
+	preflightJSONFlag      bool
+	preflightInstallHook   bool
+	preflightUninstallHook bool
+	preflightChecker       = preflight.NewChecker()
 )
 
 var preflightCmd = &cobra.Command{
@@ -35,6 +37,40 @@ Exit Codes:
   2: Port collision detected (address already in use)`,
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if preflightInstallHook && preflightUninstallHook {
+			return fmt.Errorf("--install-hook and --uninstall-hook are mutually exclusive")
+		}
+
+		if preflightInstallHook {
+			dir := "."
+			if len(args) > 0 {
+				dir = args[0]
+			}
+			hookPath, err := preflight.InstallHook(dir)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Installed pre-commit hook: %s\n", hookPath)
+			return nil
+		}
+
+		if preflightUninstallHook {
+			dir := "."
+			if len(args) > 0 {
+				dir = args[0]
+			}
+			msg, err := preflight.UninstallHook(dir)
+			if err != nil {
+				return err
+			}
+			if strings.Contains(strings.ToLower(msg), "not installed") {
+				fmt.Fprintln(cmd.OutOrStdout(), msg)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Uninstalled pre-commit hook: %s\n", msg)
+			}
+			return nil
+		}
+
 		var report *preflight.Report
 		var err error
 
@@ -131,4 +167,6 @@ func renderPreflightReport(cmd *cobra.Command, r *preflight.Report) {
 
 func init() {
 	preflightCmd.Flags().BoolVar(&preflightJSONFlag, "json", false, "Output preflight analysis as structured JSON")
+	preflightCmd.Flags().BoolVar(&preflightInstallHook, "install-hook", false, "Install a Git pre-commit hook that runs lantern preflight")
+	preflightCmd.Flags().BoolVar(&preflightUninstallHook, "uninstall-hook", false, "Uninstall the lantern preflight Git pre-commit hook")
 }

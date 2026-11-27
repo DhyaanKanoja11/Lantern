@@ -174,3 +174,102 @@ services:
 		t.Errorf("expected [OK] banner, got: %s", out)
 	}
 }
+
+func TestPreflightCmd_InstallAndUninstallHook(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		preflightInstallHook = false
+		preflightUninstallHook = false
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	// 1. Install hook
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+	rootCmd.SetArgs([]string{"preflight", tmpDir, "--install-hook"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("preflight --install-hook failed: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Installed pre-commit hook:") {
+		t.Errorf("expected installation confirmation, got:\n%s", out)
+	}
+
+	hookFile := filepath.Join(gitDir, "hooks", "pre-commit")
+	if _, err := os.Stat(hookFile); err != nil {
+		t.Fatalf("expected pre-commit hook file to exist: %v", err)
+	}
+
+	// 2. Uninstall hook
+	buf.Reset()
+	errBuf.Reset()
+	preflightInstallHook = false
+	preflightUninstallHook = true
+	rootCmd.SetArgs([]string{"preflight", tmpDir, "--uninstall-hook"})
+
+	err = rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("preflight --uninstall-hook failed: %v", err)
+	}
+
+	out = buf.String()
+	if !strings.Contains(out, "Uninstalled pre-commit hook") {
+		t.Errorf("expected uninstallation confirmation, got:\n%s", out)
+	}
+
+	if _, err := os.Stat(hookFile); !os.IsNotExist(err) {
+		t.Errorf("expected hook file to be removed after uninstall")
+	}
+
+	// 3. Uninstall again should be a clear no-op
+	buf.Reset()
+	errBuf.Reset()
+	preflightInstallHook = false
+	preflightUninstallHook = true
+	rootCmd.SetArgs([]string{"preflight", tmpDir, "--uninstall-hook"})
+
+	err = rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("expected nil error on repeated uninstall, got: %v", err)
+	}
+	out = buf.String()
+	if !strings.Contains(strings.ToLower(out), "not installed") {
+		t.Errorf("expected not installed message on second uninstall, got:\n%s", out)
+	}
+}
+
+func TestPreflightCmd_HookFlags_MutuallyExclusive(t *testing.T) {
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+	rootCmd.SetArgs([]string{"preflight", "--install-hook", "--uninstall-hook"})
+
+	defer func() {
+		preflightInstallHook = false
+		preflightUninstallHook = false
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error on mutually exclusive hook flags, got nil")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("expected mutually exclusive error, got: %v", err)
+	}
+}
