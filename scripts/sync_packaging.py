@@ -252,7 +252,7 @@ def main():
 
     # Update Homebrew Tap repo
     push_to_remote_repo(
-        repo_name="DhyaanKanoja11/homebrew-tap",
+        repo_name="DhyaanKanoja11/homebrew-lantern",
         target_file_rel="Formula/lantern.rb",
         source_file=homebrew_path,
         version=version,
@@ -261,7 +261,7 @@ def main():
 
     # Update Scoop Bucket repo
     push_to_remote_repo(
-        repo_name="DhyaanKanoja11/scoop-bucket",
+        repo_name="DhyaanKanoja11/scoop-lantern",
         target_file_rel="bucket/lantern.json",
         source_file=scoop_path,
         version=version,

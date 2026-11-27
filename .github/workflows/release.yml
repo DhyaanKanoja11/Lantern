@@ -121,4 +121,4 @@ jobs:
           python scripts/sync_packaging.py \
             --version "${{ github.ref_name }}" \
             --checksums dist/checksums.txt \
-            --token "${{ secrets.RELEASE_PAT }}"
+            --token "${{ secrets.TAP_GITHUB_TOKEN || secrets.RELEASE_PAT }}"

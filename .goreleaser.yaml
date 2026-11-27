@@ -76,6 +76,7 @@ brews:
       owner: DhyaanKanoja11
       name: homebrew-lantern
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    skip_upload: '{{ if .Env.TAP_GITHUB_TOKEN }}false{{ else }}true{{ end }}'
     directory: Formula
     homepage: "https://github.com/DhyaanKanoja11/Lantern"
     description: "Local-first developer security tool explaining service exposure causality"
@@ -89,6 +90,7 @@ scoops:
       owner: DhyaanKanoja11
       name: scoop-lantern
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    skip_upload: '{{ if .Env.TAP_GITHUB_TOKEN }}false{{ else }}true{{ end }}'
     homepage: "https://github.com/DhyaanKanoja11/Lantern"
     description: "Local-first developer security tool explaining service exposure causality"
     license: "MIT"
