@@ -24,7 +24,7 @@ Lantern is a local-first security CLI for developers. Instead of merely listing 
 curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.sh | bash
 
 # Homebrew (macOS / Linuxbrew)
-brew install DhyaanKanoja11/tap/lantern
+brew install DhyaanKanoja11/lantern/lantern
 
 # Go 1.22+
 go install github.com/DhyaanKanoja11/Lantern/cmd/lantern@latest
@@ -240,11 +240,10 @@ curl -fsSL https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install
 
 ### Option B: Homebrew (macOS & Linuxbrew)
 
-Install via the official tap:
+Install via Homebrew:
 
 ```bash
-brew tap DhyaanKanoja11/tap
-brew install lantern
+brew install DhyaanKanoja11/lantern/lantern
 ```
 
 To upgrade:
@@ -263,7 +262,7 @@ irm https://raw.githubusercontent.com/DhyaanKanoja11/Lantern/main/install.ps1 | 
 #### Scoop
 Install via the official Scoop bucket:
 ```powershell
-scoop bucket add dhyaan https://github.com/DhyaanKanoja11/scoop-bucket
+scoop bucket add lantern https://github.com/DhyaanKanoja11/scoop-lantern
 scoop install lantern
 ```
 

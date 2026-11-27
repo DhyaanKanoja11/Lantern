@@ -70,6 +70,29 @@ nfpms:
       - src: README.md
         dst: /usr/share/doc/lantern/README.md
 
+brews:
+  - name: lantern
+    repository:
+      owner: DhyaanKanoja11
+      name: homebrew-lantern
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/DhyaanKanoja11/Lantern"
+    description: "Local-first developer security tool explaining service exposure causality"
+    license: "MIT"
+    test: |
+      system "#{bin}/lantern version"
+
+scoops:
+  - name: lantern
+    repository:
+      owner: DhyaanKanoja11
+      name: scoop-lantern
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/DhyaanKanoja11/Lantern"
+    description: "Local-first developer security tool explaining service exposure causality"
+    license: "MIT"
+
 snapshot:
   version_template: "{{ incminor .Tag }}-SNAPSHOT-{{ .ShortCommit }}"
 
