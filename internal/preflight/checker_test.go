@@ -1,12 +1,15 @@
 package preflight
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/DhyaanKanoja11/Lantern/internal/compose"
 	"github.com/DhyaanKanoja11/Lantern/internal/domain"
 )
 
@@ -347,5 +350,292 @@ services:
 	}
 	if len(report.Wildcards) != 1 || report.Wildcards[0].Port != 5432 {
 		t.Errorf("expected wildcard on 5432, got: %+v", report.Wildcards)
+	}
+}
+
+func TestChecker_Reallocate_SingleCollision(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "compose.yaml")
+	content := `services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80"
+`
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mockCol := &mockCollector{
+		listeners: []domain.Listener{
+			{Address: "0.0.0.0", Port: 8080, PID: 1234},
+		},
+	}
+	checker := NewCheckerWithDeps(mockCol, nil)
+	report, err := checker.CheckFile(context.Background(), filePath)
+	if err != nil {
+		t.Fatalf("CheckFile failed: %v", err)
+	}
+	if len(report.Collisions) != 1 {
+		t.Fatalf("expected 1 collision, got %d", len(report.Collisions))
+	}
+
+	outcome, err := checker.Reallocate(context.Background(), report, false)
+	if err != nil {
+		t.Fatalf("Reallocate failed: %v", err)
+	}
+	if len(outcome.Reallocations) != 1 {
+		t.Fatalf("expected 1 reallocation, got %d", len(outcome.Reallocations))
+	}
+	r := outcome.Reallocations[0]
+	if r.OldPort != 8080 || r.NewPort == 8080 || r.NewPort == 0 {
+		t.Errorf("unexpected reallocation: %+v", r)
+	}
+
+	// Verify backup
+	backupPath := outcome.Backups[filePath]
+	if backupPath == "" {
+		t.Fatal("expected backup path for compose file")
+	}
+	backupData, err := os.ReadFile(backupPath)
+	if err != nil {
+		t.Fatalf("failed to read backup: %v", err)
+	}
+	if !bytes.Equal(backupData, []byte(content)) {
+		t.Errorf("backup bytes mismatch original bytes")
+	}
+
+	// Verify modified content on disk
+	diskData, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read modified file: %v", err)
+	}
+	expectedSub := fmt.Sprintf(`"%d:80"`, r.NewPort)
+	if !strings.Contains(string(diskData), expectedSub) {
+		t.Errorf("expected disk data to contain %s, got:\n%s", expectedSub, string(diskData))
+	}
+}
+
+func TestChecker_Reallocate_TwoServicesCollide_DistinctPorts(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "compose.yaml")
+	content := `services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80"
+  api:
+    image: node
+    ports:
+      - "8080:3000"
+`
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	checker := NewCheckerWithDeps(&mockCollector{}, nil)
+	report, err := checker.CheckFile(context.Background(), filePath)
+	if err != nil {
+		t.Fatalf("CheckFile failed: %v", err)
+	}
+	if len(report.Collisions) == 0 {
+		t.Fatal("expected collision between web and api on 8080")
+	}
+
+	outcome, err := checker.Reallocate(context.Background(), report, false)
+	if err != nil {
+		t.Fatalf("Reallocate failed: %v", err)
+	}
+	for _, r := range outcome.Reallocations {
+		if r.NewPort == 8080 {
+			t.Errorf("reallocated to same colliding port 8080")
+		}
+	}
+
+	// Verify modified disk data parses cleanly
+	diskData, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("failed to read disk file: %v", err)
+	}
+	if _, err := compose.ParseComposeFile(filePath, diskData); err != nil {
+		t.Fatalf("modified compose failed parsing: %v", err)
+	}
+}
+
+func TestChecker_Reallocate_TwoExternalCollisions_DistinctPorts(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "compose.yaml")
+	content := `services:
+  web1:
+    image: nginx
+    ports:
+      - "8080:80"
+  web2:
+    image: nginx
+    ports:
+      - "8081:80"
+`
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mockCol := &mockCollector{
+		listeners: []domain.Listener{
+			{Address: "0.0.0.0", Port: 8080, PID: 100},
+			{Address: "0.0.0.0", Port: 8081, PID: 101},
+		},
+	}
+	checker := NewCheckerWithDeps(mockCol, nil)
+	report, err := checker.CheckFile(context.Background(), filePath)
+	if err != nil {
+		t.Fatalf("CheckFile failed: %v", err)
+	}
+	if len(report.Collisions) != 2 {
+		t.Fatalf("expected 2 collisions, got %d", len(report.Collisions))
+	}
+
+	outcome, err := checker.Reallocate(context.Background(), report, false)
+	if err != nil {
+		t.Fatalf("Reallocate failed: %v", err)
+	}
+	if len(outcome.Reallocations) != 2 {
+		t.Fatalf("expected 2 reallocations, got %d", len(outcome.Reallocations))
+	}
+	p1 := outcome.Reallocations[0].NewPort
+	p2 := outcome.Reallocations[1].NewPort
+	if p1 == p2 {
+		t.Errorf("expected distinct ports for colliding services, but both got %d", p1)
+	}
+	if p1 == 8080 || p1 == 8081 || p2 == 8080 || p2 == 8081 {
+		t.Errorf("expected neither port to match existing occupied ports (8080, 8081), got %d and %d", p1, p2)
+	}
+}
+
+func TestChecker_Reallocate_DryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "compose.yaml")
+	content := `services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80"
+`
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mockCol := &mockCollector{
+		listeners: []domain.Listener{
+			{Address: "0.0.0.0", Port: 8080, PID: 100},
+		},
+	}
+	checker := NewCheckerWithDeps(mockCol, nil)
+	report, err := checker.CheckFile(context.Background(), filePath)
+	if err != nil {
+		t.Fatalf("CheckFile failed: %v", err)
+	}
+
+	outcome, err := checker.Reallocate(context.Background(), report, true)
+	if err != nil {
+		t.Fatalf("Reallocate dry-run failed: %v", err)
+	}
+	if len(outcome.Reallocations) != 1 {
+		t.Fatalf("expected 1 reallocation, got %d", len(outcome.Reallocations))
+	}
+	if len(outcome.Backups) != 0 {
+		t.Errorf("expected no backups on dry-run, got: %+v", outcome.Backups)
+	}
+	if !strings.Contains(outcome.Diff, "--- a/compose.yaml") || !strings.Contains(outcome.Diff, "+++ b/compose.yaml") {
+		t.Errorf("expected unified diff format, got:\n%s", outcome.Diff)
+	}
+
+	// Verify disk file was not modified
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, []byte(content)) {
+		t.Errorf("expected file on disk to remain unchanged on dry-run")
+	}
+
+	// Verify no backup was created
+	bakFile := filePath + ".lantern.bak"
+	if _, err := os.Stat(bakFile); !os.IsNotExist(err) {
+		t.Errorf("expected no backup file on disk on dry-run")
+	}
+}
+
+func TestChecker_Reallocate_FailClosed_InterpolatedAndRange(t *testing.T) {
+	tmpDir := t.TempDir()
+	interpFile := filepath.Join(tmpDir, "interp.yaml")
+	interpContent := `services:
+  web:
+    image: nginx
+    ports:
+      - "${PORT}:80"
+`
+	if err := os.WriteFile(interpFile, []byte(interpContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mockCol := &mockCollector{
+		listeners: []domain.Listener{
+			{Address: "0.0.0.0", Port: 8080, PID: 100},
+		},
+	}
+	checker := NewCheckerWithDeps(mockCol, nil)
+	reportInterp := &Report{
+		FilePath: interpFile,
+		Collisions: []Collision{
+			{Port: 8080, Service: "web", Line: 5, File: interpFile},
+		},
+	}
+	_, err := checker.Reallocate(context.Background(), reportInterp, false)
+	if err == nil {
+		t.Fatal("expected failure on interpolated port, got nil")
+	}
+	if !strings.Contains(err.Error(), "variable interpolation") {
+		t.Errorf("expected variable interpolation error, got: %v", err)
+	}
+
+	// Range file
+	rangeFile := filepath.Join(tmpDir, "range.yaml")
+	rangeContent := `services:
+  web:
+    image: nginx
+    ports:
+      - "8080-8085:80-85"
+`
+	if err := os.WriteFile(rangeFile, []byte(rangeContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	reportRange := &Report{
+		FilePath: rangeFile,
+		Collisions: []Collision{
+			{Port: 8080, Service: "web", Line: 5, File: rangeFile},
+		},
+	}
+	_, err = checker.Reallocate(context.Background(), reportRange, false)
+	if err == nil {
+		t.Fatal("expected failure on port range, got nil")
+	}
+	if !strings.Contains(err.Error(), "port ranges are not supported") {
+		t.Errorf("expected port range error, got: %v", err)
+	}
+}
+
+func TestChecker_Reallocate_NoCollision(t *testing.T) {
+	report := &Report{
+		FilePath:   "compose.yaml",
+		Collisions: []Collision{},
+		Passed:     true,
+	}
+	checker := NewCheckerWithDeps(&mockCollector{}, nil)
+	outcome, err := checker.Reallocate(context.Background(), report, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(outcome.Reallocations) != 0 {
+		t.Errorf("expected 0 reallocations, got %d", len(outcome.Reallocations))
 	}
 }

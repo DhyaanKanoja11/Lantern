@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/DhyaanKanoja11/Lantern/internal/preflight"
@@ -15,6 +16,8 @@ var (
 	preflightJSONFlag      bool
 	preflightInstallHook   bool
 	preflightUninstallHook bool
+	preflightReallocate    bool
+	preflightDryRun        bool
 	preflightChecker       = preflight.NewChecker()
 )
 
@@ -39,6 +42,9 @@ Exit Codes:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if preflightInstallHook && preflightUninstallHook {
 			return fmt.Errorf("--install-hook and --uninstall-hook are mutually exclusive")
+		}
+		if (preflightReallocate || preflightDryRun) && (preflightInstallHook || preflightUninstallHook) {
+			return fmt.Errorf("--reallocate and --dry-run cannot be used with hook commands")
 		}
 
 		if preflightInstallHook {
@@ -101,6 +107,47 @@ Exit Codes:
 		}
 		if err != nil {
 			return err
+		}
+
+		if preflightReallocate || preflightDryRun {
+			outcome, err := preflightChecker.Reallocate(cmd.Context(), report, preflightDryRun)
+			if err != nil {
+				return err
+			}
+			if preflightJSONFlag {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(outcome)
+			}
+			if len(outcome.Reallocations) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "Lantern Preflight: No port collisions detected; no reallocation needed.")
+				return nil
+			}
+			if preflightDryRun {
+				fmt.Fprint(cmd.OutOrStdout(), outcome.Diff)
+				return nil
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Lantern Preflight: Reallocation Applied")
+			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintf(cmd.OutOrStdout(), "Reallocated %d port(s):\n", len(outcome.Reallocations))
+			for _, r := range outcome.Reallocations {
+				fmt.Fprintf(cmd.OutOrStdout(), "  - %s: port %d -> %d (line %d in %s)\n", r.Service, r.OldPort, r.NewPort, r.Line, filepath.Base(r.File))
+			}
+			fmt.Fprintln(cmd.OutOrStdout())
+			if len(outcome.Backups) > 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "Backup created:")
+				backupKeys := make([]string, 0, len(outcome.Backups))
+				for k := range outcome.Backups {
+					backupKeys = append(backupKeys, k)
+				}
+				sort.Strings(backupKeys)
+				for _, k := range backupKeys {
+					fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", outcome.Backups[k])
+				}
+				fmt.Fprintln(cmd.OutOrStdout())
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "Remember to update any clients, scripts, or environment variables connecting to the reallocated port(s).")
+			return nil
 		}
 
 		if preflightJSONFlag {
@@ -169,4 +216,6 @@ func init() {
 	preflightCmd.Flags().BoolVar(&preflightJSONFlag, "json", false, "Output preflight analysis as structured JSON")
 	preflightCmd.Flags().BoolVar(&preflightInstallHook, "install-hook", false, "Install a Git pre-commit hook that runs lantern preflight")
 	preflightCmd.Flags().BoolVar(&preflightUninstallHook, "uninstall-hook", false, "Uninstall the lantern preflight Git pre-commit hook")
+	preflightCmd.Flags().BoolVar(&preflightReallocate, "reallocate", false, "Automatically reallocate colliding ports in Compose file(s) to free ports")
+	preflightCmd.Flags().BoolVar(&preflightDryRun, "dry-run", false, "Preview proposed port reallocations as a unified diff without modifying files")
 }
