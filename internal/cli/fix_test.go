@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -876,5 +877,198 @@ func TestFixCommand_DiffFlag_NoListener(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no listening service found on port 9999") {
 		t.Errorf("expected no listening service error, got: %v", err)
+	}
+}
+
+func createTentativeMockExposure(t *testing.T, port uint16) (*domain.Exposure, string) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+	composeContent := fmt.Sprintf("services:\n  db:\n    image: postgres:15\n    ports:\n      - \"%d:%d\"\n", port, port)
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose: %v", err)
+	}
+
+	exp := &domain.Exposure{
+		Port:        port,
+		Protocol:    "tcp",
+		BindAddress: "0.0.0.0",
+		Listener: domain.Listener{
+			Port:     port,
+			Protocol: "tcp",
+			Address:  "0.0.0.0",
+		},
+		Container: &domain.Container{
+			ID:              "c1",
+			Name:            "postgres",
+			AttributionMode: domain.AttributionInferred,
+		},
+		DockerMapping: &domain.PortMapping{
+			HostIP:        "0.0.0.0",
+			HostPort:      port,
+			ContainerPort: port,
+			Protocol:      "tcp",
+		},
+		Config: &domain.ConfigEvidence{
+			File:          composePath,
+			Line:          5,
+			Evidence:      fmt.Sprintf("%d:%d", port, port),
+			Service:       "db",
+			HostPort:      port,
+			ContainerPort: port,
+			Certain:       true,
+		},
+		Recommendation: &domain.Recommendation{
+			Type:      "bind_localhost",
+			Current:   fmt.Sprintf("%d:%d", port, port),
+			Suggested: fmt.Sprintf("127.0.0.1:%d:%d", port, port),
+		},
+		Reachability: domain.Reachability{
+			Local: true,
+			LAN:   "yes",
+			State: "LAN_REACHABLE",
+		},
+	}
+	return exp, composePath
+}
+
+func TestFixCommand_Tentative_Linux_NonRoot(t *testing.T) {
+	origAnalyzer := fixAnalyzer
+	origRemediator := fixRemediator
+	origOS := fixOS
+	origEUID := fixEUID
+	defer func() {
+		fixAnalyzer = origAnalyzer
+		fixRemediator = origRemediator
+		fixOS = origOS
+		fixEUID = origEUID
+		dryRunFlag = false
+		diffFlag = false
+	}()
+
+	exp, composePath := createTentativeMockExposure(t, 5432)
+	fixAnalyzer = &mockFixAnalyzer{exposure: exp}
+	fixRemediator = remediation.NewDefaultRemediator()
+	fixOS = func() string { return "linux" }
+	fixEUID = func() int { return 1000 }
+
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+	rootCmd.SetArgs([]string{"fix", "5432"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error from fix command: %v", err)
+	}
+
+	out := buf.String()
+	wantLine1 := "Socket ownership could not be verified without root. To apply this fix, re-run: sudo lantern fix 5432"
+	wantLine2 := "To preview the change without applying it: lantern fix 5432 --dry-run"
+	if !strings.Contains(out, wantLine1) {
+		t.Errorf("expected guidance line 1 %q, got:\n%s", wantLine1, out)
+	}
+	if !strings.Contains(out, wantLine2) {
+		t.Errorf("expected guidance line 2 %q, got:\n%s", wantLine2, out)
+	}
+	if !strings.Contains(out, "Live remediation is blocked for inferred attribution") {
+		t.Errorf("expected blocked remediation notice in output:\n%s", out)
+	}
+
+	// Verify file was not modified on disk
+	content, _ := os.ReadFile(composePath)
+	if strings.Contains(string(content), "127.0.0.1") {
+		t.Errorf("file should not have been modified on disk")
+	}
+}
+
+func TestFixCommand_Tentative_Linux_Root(t *testing.T) {
+	origAnalyzer := fixAnalyzer
+	origRemediator := fixRemediator
+	origOS := fixOS
+	origEUID := fixEUID
+	defer func() {
+		fixAnalyzer = origAnalyzer
+		fixRemediator = origRemediator
+		fixOS = origOS
+		fixEUID = origEUID
+		dryRunFlag = false
+		diffFlag = false
+	}()
+
+	exp, _ := createTentativeMockExposure(t, 5432)
+	fixAnalyzer = &mockFixAnalyzer{exposure: exp}
+	fixRemediator = remediation.NewDefaultRemediator()
+	fixOS = func() string { return "linux" }
+	fixEUID = func() int { return 0 }
+
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+	rootCmd.SetArgs([]string{"fix", "5432"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error from fix command: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "Socket ownership could not be verified without root") {
+		t.Errorf("root user on linux should not receive non-root guidance, got:\n%s", out)
+	}
+	if strings.Contains(out, "To preview the change without applying it: lantern fix") {
+		t.Errorf("root user on linux should not receive extra preview line, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Live remediation is blocked for inferred attribution") {
+		t.Errorf("expected standard blocked remediation notice, got:\n%s", out)
+	}
+}
+
+func TestFixCommand_Tentative_NonLinux(t *testing.T) {
+	origAnalyzer := fixAnalyzer
+	origRemediator := fixRemediator
+	origOS := fixOS
+	origEUID := fixEUID
+	defer func() {
+		fixAnalyzer = origAnalyzer
+		fixRemediator = origRemediator
+		fixOS = origOS
+		fixEUID = origEUID
+		dryRunFlag = false
+		diffFlag = false
+	}()
+
+	for _, osName := range []string{"darwin", "windows"} {
+		t.Run(osName, func(t *testing.T) {
+			exp, _ := createTentativeMockExposure(t, 8080)
+			fixAnalyzer = &mockFixAnalyzer{exposure: exp}
+			fixRemediator = remediation.NewDefaultRemediator()
+			fixOS = func() string { return osName }
+			fixEUID = func() int { return 1000 }
+
+			buf := new(bytes.Buffer)
+			errBuf := new(bytes.Buffer)
+			rootCmd.SetOut(buf)
+			rootCmd.SetErr(errBuf)
+			rootCmd.SetArgs([]string{"fix", "8080"})
+
+			err := rootCmd.Execute()
+			if err != nil {
+				t.Fatalf("unexpected error from fix command on %s: %v", osName, err)
+			}
+
+			out := buf.String()
+			if strings.Contains(out, "Socket ownership could not be verified without root") {
+				t.Errorf("%s should not receive linux unprivileged guidance, got:\n%s", osName, out)
+			}
+			if strings.Contains(out, "To preview the change without applying it: lantern fix") {
+				t.Errorf("%s should not receive extra preview line, got:\n%s", osName, out)
+			}
+			if !strings.Contains(out, "Live remediation is blocked for inferred attribution") {
+				t.Errorf("expected standard blocked remediation notice on %s, got:\n%s", osName, out)
+			}
+		})
 	}
 }

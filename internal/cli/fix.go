@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -18,6 +20,8 @@ var (
 	diffFlag      bool
 	fixAnalyzer   exposure.Analyzer      = exposure.NewDefaultAnalyzer()
 	fixRemediator remediation.Remediator = remediation.NewDefaultRemediator()
+	fixOS                                = func() string { return runtime.GOOS }
+	fixEUID                              = func() int { return os.Geteuid() }
 )
 
 var fixCmd = &cobra.Command{
@@ -96,6 +100,10 @@ var fixCmd = &cobra.Command{
 			fmt.Fprintln(cmd.OutOrStdout())
 			fmt.Fprintln(cmd.OutOrStdout(), "Live remediation is blocked for inferred attribution to prevent accidental file modification.")
 			fmt.Fprintf(cmd.OutOrStdout(), "Use 'lantern fix %d --dry-run' to preview the tentative diff, or run as root/sudo to verify socket ownership.\n", portVal)
+			if fixOS() == "linux" && fixEUID() != 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "Socket ownership could not be verified without root. To apply this fix, re-run: sudo lantern fix %d\n", portVal)
+				fmt.Fprintf(cmd.OutOrStdout(), "To preview the change without applying it: lantern fix %d --dry-run\n", portVal)
+			}
 			return nil
 
 		case domain.RemediationUnsafe:
