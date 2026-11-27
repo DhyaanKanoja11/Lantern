@@ -560,3 +560,97 @@ func TestInvariant22_ExitCodesAndMachineOutputStable(t *testing.T) {
 		t.Errorf("Invariant 22 Violated: JSON output schema drift:\n%s", jsonOut)
 	}
 }
+
+// Invariant 06 (Long-Syntax Extension): YAML comments and formatting are preserved for long-form port mappings.
+func TestInvariant06_LongSyntax_YAMLCommentsAndFormattingPreserved(t *testing.T) {
+	composeWithComments := `# Header comment on Compose stack
+services:
+  app:
+    image: my-app:latest # inline image comment
+    ports:
+      # Critical web service listener
+      - target: 8080
+        published: 8080 # service published port
+        protocol: tcp
+`
+	modified, err := remediation.ModifyComposeBytes([]byte(composeWithComments), "docker-compose.yml", "app", 7, 8080, "published: 8080, target: 8080, host_ip: 127.0.0.1")
+	if err != nil {
+		t.Fatalf("ModifyComposeBytes failed: %v", err)
+	}
+
+	modStr := string(modified)
+	if !strings.Contains(modStr, "# Header comment on Compose stack") {
+		t.Errorf("Invariant 6 Violated: header comment removed in long syntax")
+	}
+	if !strings.Contains(modStr, "# Critical web service listener") {
+		t.Errorf("Invariant 6 Violated: block comment removed in long syntax")
+	}
+	if !strings.Contains(modStr, "# service published port") {
+		t.Errorf("Invariant 6 Violated: inline comment removed in long syntax")
+	}
+	if !strings.Contains(modStr, "host_ip: 127.0.0.1") {
+		t.Errorf("expected host_ip: 127.0.0.1 to be inserted, got:\n%s", modStr)
+	}
+}
+
+// Invariant 07 (Long-Syntax Extension): Unrelated services and mappings remain unchanged when editing long syntax.
+func TestInvariant07_LongSyntax_UnrelatedComposeServicesUnchanged(t *testing.T) {
+	multiService := `services:
+  frontend:
+    image: web:v1
+    ports:
+      - "3000:3000"
+  backend:
+    image: api:v1
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+  cache:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+`
+	modified, err := remediation.ModifyComposeBytes([]byte(multiService), "docker-compose.yml", "backend", 9, 8080, "published: 8080, target: 8080, host_ip: 127.0.0.1")
+	if err != nil {
+		t.Fatalf("ModifyComposeBytes failed: %v", err)
+	}
+
+	modStr := string(modified)
+	if !strings.Contains(modStr, `- "3000:3000"`) {
+		t.Errorf("Invariant 7 Violated: unrelated service 'frontend' port was altered")
+	}
+	if !strings.Contains(modStr, `- "6379:6379"`) {
+		t.Errorf("Invariant 7 Violated: unrelated service 'cache' port was altered")
+	}
+	if !strings.Contains(modStr, "host_ip: 127.0.0.1") {
+		t.Errorf("target service 'backend' was not remediated:\n%s", modStr)
+	}
+}
+
+// Invariant 10 (Long-Syntax Extension): Unsupported long-form configurations fail closed.
+func TestInvariant10_LongSyntax_UnsupportedConfigurationFailsSafely(t *testing.T) {
+	// 1. Port range fails closed
+	rangeCompose := `services:
+  cluster:
+    image: cluster:latest
+    ports:
+      - target: 8000
+        published: "8000-8005"
+`
+	if _, err := remediation.ModifyComposeBytes([]byte(rangeCompose), "docker-compose.yml", "cluster", 5, 8000, "127.0.0.1"); err == nil {
+		t.Errorf("Invariant 10 Violated: expected unsupported error on long-form port range, got nil")
+	}
+
+	// 2. Interpolation fails closed
+	interpCompose := `services:
+  app:
+    image: app:latest
+    ports:
+      - target: 3000
+        published: "${APP_PORT}"
+`
+	if _, err := remediation.ModifyComposeBytes([]byte(interpCompose), "docker-compose.yml", "app", 5, 3000, "127.0.0.1"); err == nil {
+		t.Errorf("Invariant 10 Violated: expected unsupported error on long-form interpolation, got nil")
+	}
+}

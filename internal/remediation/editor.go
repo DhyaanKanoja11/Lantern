@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/DhyaanKanoja11/Lantern/internal/compose"
@@ -17,6 +18,12 @@ type TargetLocation struct {
 	Value         string
 	HostPort      uint16
 	ContainerPort uint16
+	IsLongSyntax  bool
+	MappingItem   *yaml.Node
+	HostIPLine    int
+	HostIPValue   string
+	PublishedLine int
+	LastItemLine  int
 }
 
 // FindTargetPort locates the exact Compose port item in the YAML AST.
@@ -74,41 +81,128 @@ func FindTargetPort(data []byte, targetService string, targetLine int, targetPor
 					}
 
 					for _, item := range portSeq.Content {
-						if item.Kind != yaml.ScalarNode {
-							continue
-						}
-
-						// Match by line if targetLine provided
-						if targetLine > 0 && item.Line != targetLine {
-							continue
-						}
-
-						loc := TargetLocation{
-							Service: svcKey.Value,
-							Line:    item.Line,
-							Value:   item.Value,
-						}
-
-						// If we know the host port, the declaration has to
-						// actually publish it. Ephemeral ("80") and
-						// unparseable values can't be checked here; later
-						// verification handles those.
-						if parsed, err := compose.ParsePortShort(item.Value); err == nil {
-							if targetPort > 0 && !parsed.IsEphemeral() && !parsed.MatchesPort(targetPort) {
+						if item.Kind == yaml.ScalarNode {
+							// Match by line if targetLine provided
+							if targetLine > 0 && item.Line != targetLine {
 								continue
 							}
-							loc.HostPort = parsed.HostPortStart
-							loc.ContainerPort = parsed.ContainerPort
-							if targetPort > 0 && parsed.MatchesPort(targetPort) {
-								loc.HostPort = targetPort
-								// In "8080-8085:80-85", 8082 maps to 82.
-								if parsed.ContainerPortEnd > parsed.ContainerPort {
-									loc.ContainerPort = parsed.ContainerPort + (targetPort - parsed.HostPortStart)
+
+							loc := TargetLocation{
+								Service: svcKey.Value,
+								Line:    item.Line,
+								Value:   item.Value,
+							}
+
+							// If we know the host port, the declaration has to
+							// actually publish it. Ephemeral ("80") and
+							// unparseable values can't be checked here; later
+							// verification handles those.
+							if parsed, err := compose.ParsePortShort(item.Value); err == nil {
+								if targetPort > 0 && !parsed.IsEphemeral() && !parsed.MatchesPort(targetPort) {
+									continue
+								}
+								loc.HostPort = parsed.HostPortStart
+								loc.ContainerPort = parsed.ContainerPort
+								if targetPort > 0 && parsed.MatchesPort(targetPort) {
+									loc.HostPort = targetPort
+									// In "8080-8085:80-85", 8082 maps to 82.
+									if parsed.ContainerPortEnd > parsed.ContainerPort {
+										loc.ContainerPort = parsed.ContainerPort + (targetPort - parsed.HostPortStart)
+									}
 								}
 							}
-						}
 
-						matches = append(matches, loc)
+							matches = append(matches, loc)
+						} else if item.Kind == yaml.MappingNode {
+							var targetStr, publishedStr, protocolStr, hostIPStr string
+							var targetValNode, publishedValNode, hostIPValNode *yaml.Node
+							maxLine := item.Line
+
+							for k := 0; k < len(item.Content)-1; k += 2 {
+								keyNode := item.Content[k]
+								valNode := item.Content[k+1]
+								if keyNode.Line > maxLine {
+									maxLine = keyNode.Line
+								}
+								if valNode.Line > maxLine {
+									maxLine = valNode.Line
+								}
+
+								switch keyNode.Value {
+								case "target":
+									targetStr = valNode.Value
+									targetValNode = valNode
+								case "published":
+									publishedStr = strings.TrimSpace(valNode.Value)
+									publishedValNode = valNode
+								case "protocol":
+									protocolStr = strings.ToLower(strings.TrimSpace(valNode.Value))
+								case "host_ip":
+									hostIPStr = strings.Trim(strings.TrimSpace(valNode.Value), "[]")
+									hostIPValNode = valNode
+								}
+							}
+
+							// If targetLine specified, must match within mapping range
+							if targetLine > 0 && (targetLine < item.Line || targetLine > maxLine) {
+								continue
+							}
+
+							var containerPort uint16
+							if targetValNode != nil {
+								if cVal, err := strconv.ParseUint(targetStr, 10, 16); err == nil {
+									containerPort = uint16(cVal)
+								}
+							}
+
+							isInterp := strings.Contains(publishedStr, "${")
+							isRange := strings.Contains(publishedStr, "-")
+
+							if publishedValNode == nil || publishedStr == "" {
+								// Ephemeral container port only
+								if targetPort > 0 {
+									continue
+								}
+							} else if !isInterp && !isRange {
+								cleanPub := strings.Trim(publishedStr, "\"'")
+								if pVal, err := strconv.ParseUint(cleanPub, 10, 16); err == nil {
+									hostPort := uint16(pVal)
+									if targetPort > 0 && hostPort != targetPort {
+										continue
+									}
+								} else if targetPort > 0 {
+									continue
+								}
+							} else if targetPort > 0 && targetLine == 0 {
+								continue
+							}
+
+							_ = protocolStr
+							loc := TargetLocation{
+								Service:       svcKey.Value,
+								Line:          item.Line,
+								Value:         publishedStr,
+								ContainerPort: containerPort,
+								IsLongSyntax:  true,
+								MappingItem:   item,
+								HostIPLine:    0,
+								HostIPValue:   hostIPStr,
+								PublishedLine: 0,
+								LastItemLine:  maxLine,
+							}
+							if publishedValNode != nil {
+								loc.PublishedLine = publishedValNode.Line
+								cleanPub := strings.Trim(publishedStr, "\"'")
+								if pVal, err := strconv.ParseUint(cleanPub, 10, 16); err == nil {
+									loc.HostPort = uint16(pVal)
+								}
+							}
+							if hostIPValNode != nil {
+								loc.HostIPLine = hostIPValNode.Line
+							}
+
+							matches = append(matches, loc)
+						}
 					}
 				}
 			}
@@ -158,69 +252,110 @@ func ModifyComposeBytes(data []byte, filePath string, targetService string, targ
 
 	hasCRLF := bytes.Contains(data, []byte("\r\n"))
 	rawLines := strings.Split(string(data), "\n")
+	rawLinesOriginal := make([]string, len(rawLines))
+	copy(rawLinesOriginal, rawLines)
 
-	if loc.Line < 1 || loc.Line > len(rawLines) {
-		return nil, fmt.Errorf("target line %d is outside file line bounds (%d lines)", loc.Line, len(rawLines))
-	}
-
-	lineIdx := loc.Line - 1
-	line := strings.TrimRight(rawLines[lineIdx], "\r")
-
-	// Ensure line has sequence indicator '-'
-	dashIdx := strings.Index(line, "-")
-	if dashIdx == -1 {
-		return nil, fmt.Errorf("line %d does not contain YAML sequence indicator '-': %q", loc.Line, line)
-	}
-
-	// Find the port token after '-'
-	afterDash := line[dashIdx+1:]
-	firstNonSpace := strings.IndexFunc(afterDash, func(r rune) bool {
-		return r != ' ' && r != '\t'
-	})
-	if firstNonSpace == -1 {
-		return nil, fmt.Errorf("line %d has no content after sequence indicator: %q", loc.Line, line)
-	}
-
-	valStartIdx := dashIdx + 1 + firstNonSpace
-
-	// Find any trailing comment starting with '#'
-	commentIdx := -1
-	inQuote := false
-	quoteChar := byte(0)
-	for i := valStartIdx; i < len(line); i++ {
-		ch := line[i]
-		if !inQuote && (ch == '"' || ch == '\'') {
-			inQuote = true
-			quoteChar = ch
-			continue
+	if loc.IsLongSyntax {
+		if loc.Value == "" {
+			return nil, fmt.Errorf("target long-form port declaration for service %q has no published host port", loc.Service)
 		}
-		if inQuote && ch == quoteChar {
-			inQuote = false
-			quoteChar = 0
-			continue
+		if strings.Contains(loc.Value, "${") {
+			return nil, fmt.Errorf("line %d uses variable interpolation (%s); refusing to replace it with a literal", loc.Line, loc.Value)
 		}
-		if !inQuote && ch == '#' {
-			commentIdx = i
-			break
+		if strings.Contains(loc.Value, "-") {
+			return nil, fmt.Errorf("port ranges are not supported for automatic remediation: service %q line %d", loc.Service, loc.Line)
 		}
+
+		if loc.HostIPLine > 0 {
+			lineIdx := loc.HostIPLine - 1
+			if lineIdx < 0 || lineIdx >= len(rawLines) {
+				return nil, fmt.Errorf("target host_ip line %d is outside file bounds", loc.HostIPLine)
+			}
+			origLine := strings.TrimRight(rawLines[lineIdx], "\r")
+			newLine, err := replaceHostIPInLine(origLine, "127.0.0.1")
+			if err != nil {
+				return nil, fmt.Errorf("failed to rewrite host_ip on line %d: %w", loc.HostIPLine, err)
+			}
+			rawLines[lineIdx] = newLine
+		} else {
+			indent := determineMappingIndentation(rawLines, loc.MappingItem)
+			newLine := indent + "host_ip: 127.0.0.1"
+
+			insertIdx := loc.LastItemLine
+			if insertIdx < 0 || insertIdx > len(rawLines) {
+				return nil, fmt.Errorf("target insert position %d is outside file bounds", insertIdx)
+			}
+
+			newLines := make([]string, 0, len(rawLines)+1)
+			newLines = append(newLines, rawLines[:insertIdx]...)
+			newLines = append(newLines, newLine)
+			newLines = append(newLines, rawLines[insertIdx:]...)
+			rawLines = newLines
+		}
+	} else {
+		if loc.Line < 1 || loc.Line > len(rawLines) {
+			return nil, fmt.Errorf("target line %d is outside file line bounds (%d lines)", loc.Line, len(rawLines))
+		}
+
+		lineIdx := loc.Line - 1
+		line := strings.TrimRight(rawLines[lineIdx], "\r")
+
+		// Ensure line has sequence indicator '-'
+		dashIdx := strings.Index(line, "-")
+		if dashIdx == -1 {
+			return nil, fmt.Errorf("line %d does not contain YAML sequence indicator '-': %q", loc.Line, line)
+		}
+
+		// Find the port token after '-'
+		afterDash := line[dashIdx+1:]
+		firstNonSpace := strings.IndexFunc(afterDash, func(r rune) bool {
+			return r != ' ' && r != '\t'
+		})
+		if firstNonSpace == -1 {
+			return nil, fmt.Errorf("line %d has no content after sequence indicator: %q", loc.Line, line)
+		}
+
+		valStartIdx := dashIdx + 1 + firstNonSpace
+
+		// Find any trailing comment starting with '#'
+		commentIdx := -1
+		inQuote := false
+		quoteChar := byte(0)
+		for i := valStartIdx; i < len(line); i++ {
+			ch := line[i]
+			if !inQuote && (ch == '"' || ch == '\'') {
+				inQuote = true
+				quoteChar = ch
+				continue
+			}
+			if inQuote && ch == quoteChar {
+				inQuote = false
+				quoteChar = 0
+				continue
+			}
+			if !inQuote && ch == '#' {
+				commentIdx = i
+				break
+			}
+		}
+
+		valEndIdx := len(line)
+		suffix := ""
+		if commentIdx != -1 {
+			valEndIdx = commentIdx
+			suffix = line[commentIdx:]
+		}
+
+		// Trim trailing whitespace from value portion
+		valPortion := strings.TrimRight(line[valStartIdx:valEndIdx], " \t")
+		spacingAfterVal := line[valStartIdx+len(valPortion) : valEndIdx]
+
+		prefix := line[:valStartIdx]
+		formattedReplacement := fmt.Sprintf("%q", newEvidence)
+
+		newLine := prefix + formattedReplacement + spacingAfterVal + suffix
+		rawLines[lineIdx] = newLine
 	}
-
-	valEndIdx := len(line)
-	suffix := ""
-	if commentIdx != -1 {
-		valEndIdx = commentIdx
-		suffix = line[commentIdx:]
-	}
-
-	// Trim trailing whitespace from value portion
-	valPortion := strings.TrimRight(line[valStartIdx:valEndIdx], " \t")
-	spacingAfterVal := line[valStartIdx+len(valPortion) : valEndIdx]
-
-	prefix := line[:valStartIdx]
-	formattedReplacement := fmt.Sprintf("%q", newEvidence)
-
-	newLine := prefix + formattedReplacement + spacingAfterVal + suffix
-	rawLines[lineIdx] = newLine
 
 	var joinSep string
 	if hasCRLF {
@@ -274,16 +409,100 @@ func ModifyComposeBytes(data []byte, filePath string, targetService string, targ
 		return nil, fmt.Errorf("post-modification verification failed: port declaration count changed from %d to %d", len(initialEvidence), len(newEvidenceList))
 	}
 
+	lineShift := len(rawLines) - len(rawLinesOriginal)
 	for i := range initialEvidence {
 		orig := initialEvidence[i]
 		mod := newEvidenceList[i]
 		if orig.Line == loc.Line && orig.Service == loc.Service {
 			continue // This was the target
 		}
-		if orig.Service != mod.Service || orig.Line != mod.Line || orig.Original != mod.Original {
+		expectedLine := orig.Line
+		if orig.Line > loc.Line {
+			expectedLine += lineShift
+		}
+		if orig.Service != mod.Service || mod.Line != expectedLine || orig.Original != mod.Original {
 			return nil, fmt.Errorf("unintended modification detected in service %q (line %d)", orig.Service, orig.Line)
 		}
 	}
 
 	return modifiedBytes, nil
+}
+
+func replaceHostIPInLine(line string, newIP string) (string, error) {
+	keyIdx := strings.Index(line, "host_ip")
+	if keyIdx == -1 {
+		return "", fmt.Errorf("host_ip key not found in line: %q", line)
+	}
+	colonIdx := strings.Index(line[keyIdx:], ":")
+	if colonIdx == -1 {
+		return "", fmt.Errorf("colon not found after host_ip in line: %q", line)
+	}
+	actualColonIdx := keyIdx + colonIdx
+
+	beforeColon := line[:actualColonIdx+1]
+	rest := line[actualColonIdx+1:]
+
+	nonSpaceIdx := strings.IndexFunc(rest, func(r rune) bool {
+		return r != ' ' && r != '\t'
+	})
+	if nonSpaceIdx == -1 {
+		return beforeColon + " " + newIP, nil
+	}
+
+	spacing := rest[:nonSpaceIdx]
+	valAndAfter := rest[nonSpaceIdx:]
+
+	quoteChar := byte(0)
+	valEnd := len(valAndAfter)
+	suffix := ""
+
+	if valAndAfter[0] == '"' || valAndAfter[0] == '\'' {
+		quoteChar = valAndAfter[0]
+		closeQuoteIdx := strings.IndexByte(valAndAfter[1:], quoteChar)
+		if closeQuoteIdx != -1 {
+			valEnd = 1 + closeQuoteIdx + 1
+			suffix = valAndAfter[valEnd:]
+		}
+	} else {
+		commentIdx := strings.IndexByte(valAndAfter, '#')
+		if commentIdx != -1 {
+			valEnd = commentIdx
+			suffix = valAndAfter[commentIdx:]
+		}
+		valStr := strings.TrimRight(valAndAfter[:valEnd], " \t")
+		spacingAfterVal := valAndAfter[len(valStr):valEnd]
+		suffix = spacingAfterVal + suffix
+	}
+
+	var formattedVal string
+	if quoteChar != 0 {
+		formattedVal = string(quoteChar) + newIP + string(quoteChar)
+	} else {
+		formattedVal = newIP
+	}
+
+	return beforeColon + spacing + formattedVal + suffix, nil
+}
+
+func determineMappingIndentation(rawLines []string, item *yaml.Node) string {
+	if item != nil {
+		for k := 0; k < len(item.Content)-1; k += 2 {
+			keyNode := item.Content[k]
+			lineIdx := keyNode.Line - 1
+			if lineIdx >= 0 && lineIdx < len(rawLines) {
+				lineText := strings.TrimRight(rawLines[lineIdx], "\r")
+				trimmed := strings.TrimLeft(lineText, " \t")
+				if !strings.HasPrefix(trimmed, "-") && len(trimmed) > 0 {
+					return lineText[:len(lineText)-len(trimmed)]
+				}
+			}
+		}
+		if item.Line-1 >= 0 && item.Line-1 < len(rawLines) {
+			lineText := strings.TrimRight(rawLines[item.Line-1], "\r")
+			trimmed := strings.TrimLeft(lineText, " \t")
+			prefix := lineText[:len(lineText)-len(trimmed)]
+			return prefix + "  "
+		}
+	}
+	return "        "
 }
