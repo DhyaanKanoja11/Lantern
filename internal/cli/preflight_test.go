@@ -2,11 +2,32 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/DhyaanKanoja11/Lantern/internal/domain"
+	"github.com/DhyaanKanoja11/Lantern/internal/preflight"
 )
+
+type mockPreflightCollector struct {
+	listeners []domain.Listener
+}
+
+func (m *mockPreflightCollector) CollectListeners(ctx context.Context) ([]domain.Listener, error) {
+	return m.listeners, nil
+}
+
+func (m *mockPreflightCollector) FindListenerByPort(ctx context.Context, port uint16) (*domain.Listener, error) {
+	for _, l := range m.listeners {
+		if l.Port == port {
+			return &l, nil
+		}
+	}
+	return nil, nil
+}
 
 func TestPreflightCmd_Help(t *testing.T) {
 	buf := new(bytes.Buffer)
@@ -271,5 +292,144 @@ func TestPreflightCmd_HookFlags_MutuallyExclusive(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Errorf("expected mutually exclusive error, got: %v", err)
+	}
+}
+
+func TestPreflightCmd_Reallocate_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "docker-compose.yml")
+	content := `services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80"
+`
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origChecker := preflightChecker
+	defer func() {
+		preflightChecker = origChecker
+		preflightReallocate = false
+		preflightDryRun = false
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	mockCol := &mockPreflightCollector{
+		listeners: []domain.Listener{
+			{Address: "0.0.0.0", Port: 8080, PID: 123},
+		},
+	}
+	preflightChecker = preflight.NewCheckerWithDeps(mockCol, nil)
+
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+	rootCmd.SetArgs([]string{"preflight", filePath, "--reallocate"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("preflight --reallocate failed: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Reallocation Applied") {
+		t.Errorf("expected 'Reallocation Applied' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Backup created:") {
+		t.Errorf("expected 'Backup created:' in output, got:\n%s", out)
+	}
+
+	// Verify disk file modified
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), `"8080:80"`) {
+		t.Errorf("expected file to no longer contain 8080:80, got:\n%s", string(data))
+	}
+}
+
+func TestPreflightCmd_Reallocate_DryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "docker-compose.yml")
+	content := `services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80"
+`
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origChecker := preflightChecker
+	defer func() {
+		preflightChecker = origChecker
+		preflightReallocate = false
+		preflightDryRun = false
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	mockCol := &mockPreflightCollector{
+		listeners: []domain.Listener{
+			{Address: "0.0.0.0", Port: 8080, PID: 123},
+		},
+	}
+	preflightChecker = preflight.NewCheckerWithDeps(mockCol, nil)
+
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+	rootCmd.SetArgs([]string{"preflight", filePath, "--reallocate", "--dry-run"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("preflight --reallocate --dry-run failed: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "--- a/docker-compose.yml") || !strings.Contains(out, "+++ b/docker-compose.yml") {
+		t.Errorf("expected unified diff output, got:\n%s", out)
+	}
+
+	// Verify disk file unmodified
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, []byte(content)) {
+		t.Errorf("expected disk file to remain untouched on dry-run")
+	}
+}
+
+func TestPreflightCmd_Reallocate_HookConflict(t *testing.T) {
+	buf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(errBuf)
+	rootCmd.SetArgs([]string{"preflight", "--reallocate", "--install-hook"})
+
+	defer func() {
+		preflightReallocate = false
+		preflightInstallHook = false
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	}()
+
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error combining --reallocate and --install-hook, got nil")
+	}
+	if !strings.Contains(err.Error(), "cannot be used with hook commands") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }

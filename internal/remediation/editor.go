@@ -506,3 +506,272 @@ func determineMappingIndentation(rawLines []string, item *yaml.Node) string {
 	}
 	return "        "
 }
+
+// ModifyComposeHostPortBytes rewrites the host/published port of an exact Compose port item
+// to newHostPort. Supports both short syntax (e.g. "8080:80") and long syntax (published: 8080).
+// Preserves comments, indentation, container port, host IP, and unrelated declarations.
+// Fails closed if the port uses variable interpolation (${PORT}) or is a range.
+func ModifyComposeHostPortBytes(data []byte, filePath string, targetService string, targetLine int, targetPort uint16, newHostPort uint16) ([]byte, error) {
+	if newHostPort == 0 {
+		return nil, fmt.Errorf("invalid new host port: %d", newHostPort)
+	}
+
+	initialEvidence, err := compose.ParseComposeFile(filePath, data)
+	if err != nil {
+		return nil, fmt.Errorf("cannot modify file with invalid initial Compose syntax: %w", err)
+	}
+
+	loc, err := FindTargetPort(data, targetService, targetLine, targetPort)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range initialEvidence {
+		if e.Service == loc.Service && e.Line == loc.Line && e.Interpolated {
+			return nil, fmt.Errorf("line %d uses variable interpolation (%s); refusing to replace it with a literal", loc.Line, e.Original)
+		}
+	}
+
+	if loc.Value == "" {
+		return nil, fmt.Errorf("target port declaration for service %q has no published host port", loc.Service)
+	}
+	if strings.Contains(loc.Value, "${") {
+		return nil, fmt.Errorf("line %d uses variable interpolation (%s); refusing to replace it with a literal", loc.Line, loc.Value)
+	}
+	if strings.Contains(loc.Value, "-") {
+		return nil, fmt.Errorf("port ranges are not supported for automatic remediation: service %q line %d", loc.Service, loc.Line)
+	}
+
+	hasCRLF := bytes.Contains(data, []byte("\r\n"))
+	rawLines := strings.Split(string(data), "\n")
+
+	if loc.IsLongSyntax {
+		if loc.PublishedLine <= 0 || loc.PublishedLine > len(rawLines) {
+			return nil, fmt.Errorf("published line %d is outside file line bounds (%d lines)", loc.PublishedLine, len(rawLines))
+		}
+		lineIdx := loc.PublishedLine - 1
+		origLine := strings.TrimRight(rawLines[lineIdx], "\r")
+		newLine, err := replacePublishedInLine(origLine, newHostPort)
+		if err != nil {
+			return nil, fmt.Errorf("failed to rewrite published port on line %d: %w", loc.PublishedLine, err)
+		}
+		rawLines[lineIdx] = newLine
+	} else {
+		if loc.Line < 1 || loc.Line > len(rawLines) {
+			return nil, fmt.Errorf("target line %d is outside file line bounds (%d lines)", loc.Line, len(rawLines))
+		}
+		lineIdx := loc.Line - 1
+		line := strings.TrimRight(rawLines[lineIdx], "\r")
+
+		dashIdx := strings.Index(line, "-")
+		if dashIdx == -1 {
+			return nil, fmt.Errorf("line %d does not contain YAML sequence indicator '-': %q", loc.Line, line)
+		}
+
+		afterDash := line[dashIdx+1:]
+		firstNonSpace := strings.IndexFunc(afterDash, func(r rune) bool {
+			return r != ' ' && r != '\t'
+		})
+		if firstNonSpace == -1 {
+			return nil, fmt.Errorf("line %d has no content after sequence indicator: %q", loc.Line, line)
+		}
+
+		valStartIdx := dashIdx + 1 + firstNonSpace
+
+		commentIdx := -1
+		inQuote := false
+		quoteChar := byte(0)
+		for i := valStartIdx; i < len(line); i++ {
+			ch := line[i]
+			if !inQuote && (ch == '"' || ch == '\'') {
+				inQuote = true
+				quoteChar = ch
+				continue
+			}
+			if inQuote && ch == quoteChar {
+				inQuote = false
+				quoteChar = 0
+				continue
+			}
+			if !inQuote && ch == '#' {
+				commentIdx = i
+				break
+			}
+		}
+
+		valEndIdx := len(line)
+		suffix := ""
+		if commentIdx != -1 {
+			valEndIdx = commentIdx
+			suffix = line[commentIdx:]
+		}
+
+		rawVal := strings.TrimSpace(line[valStartIdx:valEndIdx])
+		unquotedVal := rawVal
+		if len(rawVal) >= 2 && ((rawVal[0] == '"' && rawVal[len(rawVal)-1] == '"') || (rawVal[0] == '\'' && rawVal[len(rawVal)-1] == '\'')) {
+			unquotedVal = rawVal[1 : len(rawVal)-1]
+		}
+
+		rewrittenToken, err := rewriteShortHostPort(unquotedVal, newHostPort)
+		if err != nil {
+			return nil, fmt.Errorf("failed to rewrite short port on line %d: %w", loc.Line, err)
+		}
+
+		var formattedReplacement string
+		if quoteChar != 0 || (len(rawVal) >= 2 && rawVal[0] == '"') {
+			formattedReplacement = fmt.Sprintf("%q", rewrittenToken)
+		} else if len(rawVal) >= 2 && rawVal[0] == '\'' {
+			formattedReplacement = fmt.Sprintf("'%s'", rewrittenToken)
+		} else {
+			formattedReplacement = rewrittenToken
+		}
+
+		valPortion := strings.TrimRight(line[valStartIdx:valEndIdx], " \t")
+		spacingAfterVal := line[valStartIdx+len(valPortion) : valEndIdx]
+		prefix := line[:valStartIdx]
+
+		newLine := prefix + formattedReplacement + spacingAfterVal + suffix
+		rawLines[lineIdx] = newLine
+	}
+
+	var joinSep string
+	if hasCRLF {
+		joinSep = "\r\n"
+	} else {
+		joinSep = "\n"
+	}
+	modifiedBytes := []byte(strings.Join(rawLines, joinSep))
+
+	// Invariant Verification:
+	// 1. Strict YAML syntax
+	var verifyRoot yaml.Node
+	if err := yaml.Unmarshal(modifiedBytes, &verifyRoot); err != nil {
+		return nil, fmt.Errorf("modified content produced invalid YAML: %w", err)
+	}
+
+	// 2. Compose validation
+	newEvidenceList, err := compose.ParseComposeFile(filePath, modifiedBytes)
+	if err != nil {
+		return nil, fmt.Errorf("modified content failed Compose validation: %w", err)
+	}
+
+	// 3. Confirm target host port updated to newHostPort while keeping everything else identical
+	var before, after *compose.ParsedPort
+	for i := range initialEvidence {
+		if initialEvidence[i].Service == loc.Service && initialEvidence[i].Line == loc.Line {
+			before = &initialEvidence[i].Port
+		}
+	}
+	for i := range newEvidenceList {
+		if newEvidenceList[i].Service == loc.Service && newEvidenceList[i].Line == loc.Line {
+			after = &newEvidenceList[i].Port
+		}
+	}
+	if before == nil || after == nil {
+		return nil, fmt.Errorf("post-modification verification failed: could not locate target port on line %d", loc.Line)
+	}
+	if after.HostPortStart != newHostPort {
+		return nil, fmt.Errorf("post-modification verification failed: target port on line %d was not updated to %d (found %d)", loc.Line, newHostPort, after.HostPortStart)
+	}
+	if after.ContainerPort != before.ContainerPort {
+		return nil, fmt.Errorf("post-modification verification failed: container port changed from %d to %d", before.ContainerPort, after.ContainerPort)
+	}
+	if !strings.EqualFold(after.Protocol, before.Protocol) {
+		return nil, fmt.Errorf("post-modification verification failed: protocol changed from %s to %s", before.Protocol, after.Protocol)
+	}
+	if strings.Trim(strings.TrimSpace(after.HostIP), "[]") != strings.Trim(strings.TrimSpace(before.HostIP), "[]") {
+		return nil, fmt.Errorf("post-modification verification failed: host IP changed from %s to %s", before.HostIP, after.HostIP)
+	}
+
+	return modifiedBytes, nil
+}
+
+func replacePublishedInLine(line string, newPort uint16) (string, error) {
+	colonIdx := strings.Index(line, "published:")
+	if colonIdx == -1 {
+		return "", fmt.Errorf("line does not contain 'published:': %q", line)
+	}
+
+	beforeColon := line[:colonIdx+len("published:")]
+	rest := line[colonIdx+len("published:"):]
+
+	nonSpaceIdx := strings.IndexFunc(rest, func(r rune) bool {
+		return r != ' ' && r != '\t'
+	})
+	if nonSpaceIdx == -1 {
+		return "", fmt.Errorf("published declaration has no value: %q", line)
+	}
+
+	spacing := rest[:nonSpaceIdx]
+	valAndAfter := rest[nonSpaceIdx:]
+
+	quoteChar := byte(0)
+	valEnd := len(valAndAfter)
+	suffix := ""
+
+	if valAndAfter[0] == '"' || valAndAfter[0] == '\'' {
+		quoteChar = valAndAfter[0]
+		closeQuoteIdx := strings.IndexByte(valAndAfter[1:], quoteChar)
+		if closeQuoteIdx != -1 {
+			valEnd = 1 + closeQuoteIdx + 1
+			suffix = valAndAfter[valEnd:]
+		}
+	} else {
+		commentIdx := strings.IndexByte(valAndAfter, '#')
+		if commentIdx != -1 {
+			valEnd = commentIdx
+			suffix = valAndAfter[commentIdx:]
+		}
+		valStr := strings.TrimRight(valAndAfter[:valEnd], " \t")
+		spacingAfterVal := valAndAfter[len(valStr):valEnd]
+		suffix = spacingAfterVal + suffix
+	}
+
+	var formattedVal string
+	if quoteChar != 0 {
+		formattedVal = fmt.Sprintf("%c%d%c", quoteChar, newPort, quoteChar)
+	} else {
+		formattedVal = strconv.Itoa(int(newPort))
+	}
+
+	return beforeColon + spacing + formattedVal + suffix, nil
+}
+
+func rewriteShortHostPort(rawVal string, newPort uint16) (string, error) {
+	protoSuffix := ""
+	val := rawVal
+	if idx := strings.LastIndex(val, "/"); idx != -1 {
+		protoSuffix = val[idx:]
+		val = val[:idx]
+	}
+
+	var hostIP string
+	if strings.HasPrefix(val, "[") {
+		closeIdx := strings.Index(val, "]")
+		if closeIdx == -1 {
+			return "", fmt.Errorf("unmatched ipv6 bracket in %q", rawVal)
+		}
+		hostIP = val[:closeIdx+1]
+		val = strings.TrimPrefix(val[closeIdx+1:], ":")
+	}
+
+	if hostIP != "" {
+		parts := strings.Split(val, ":")
+		if len(parts) != 2 {
+			return "", fmt.Errorf("unexpected ipv6 port format in %q", rawVal)
+		}
+		return fmt.Sprintf("%s:%d:%s%s", hostIP, newPort, parts[1], protoSuffix), nil
+	}
+
+	parts := strings.Split(val, ":")
+	switch len(parts) {
+	case 2:
+		// hostPort:containerPort
+		return fmt.Sprintf("%d:%s%s", newPort, parts[1], protoSuffix), nil
+	case 3:
+		// hostIP:hostPort:containerPort
+		return fmt.Sprintf("%s:%d:%s%s", parts[0], newPort, parts[2], protoSuffix), nil
+	default:
+		return "", fmt.Errorf("unsupported port mapping format for host port rewriting: %q", rawVal)
+	}
+}

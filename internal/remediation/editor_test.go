@@ -254,3 +254,90 @@ func TestApplyComposeFix_LongForm_CreatesByteIdenticalBackup(t *testing.T) {
 		t.Errorf("modified file on disk does not contain host_ip: 127.0.0.1:\n%s", string(modifiedDisk))
 	}
 }
+
+func TestModifyComposeHostPortBytes_ShortSyntax(t *testing.T) {
+	content := []byte(`services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80" # web port
+      - "127.0.0.1:9090:90"
+      - "[::1]:7070:70/tcp"
+`)
+
+	// 1. Rewrite 8080:80 -> 8081:80
+	mod1, err := ModifyComposeHostPortBytes(content, "compose.yaml", "web", 5, 8080, 8081)
+	if err != nil {
+		t.Fatalf("ModifyComposeHostPortBytes failed for 8080: %v", err)
+	}
+	if !strings.Contains(string(mod1), `"8081:80" # web port`) {
+		t.Errorf("expected updated port with preserved comment, got:\n%s", string(mod1))
+	}
+
+	// 2. Rewrite 127.0.0.1:9090:90 -> 127.0.0.1:9091:90
+	mod2, err := ModifyComposeHostPortBytes(mod1, "compose.yaml", "web", 6, 9090, 9091)
+	if err != nil {
+		t.Fatalf("ModifyComposeHostPortBytes failed for 9090: %v", err)
+	}
+	if !strings.Contains(string(mod2), `"127.0.0.1:9091:90"`) {
+		t.Errorf("expected updated host IP binding, got:\n%s", string(mod2))
+	}
+
+	// 3. Rewrite [::1]:7070:70/tcp -> [::1]:7071:70/tcp
+	mod3, err := ModifyComposeHostPortBytes(mod2, "compose.yaml", "web", 7, 7070, 7071)
+	if err != nil {
+		t.Fatalf("ModifyComposeHostPortBytes failed for 7070: %v", err)
+	}
+	if !strings.Contains(string(mod3), `"[::1]:7071:70/tcp"`) {
+		t.Errorf("expected updated IPv6 binding, got:\n%s", string(mod3))
+	}
+}
+
+func TestModifyComposeHostPortBytes_LongSyntax(t *testing.T) {
+	content := []byte(`services:
+  web:
+    image: nginx
+    ports:
+      - target: 80
+        published: 8080 # comment
+        protocol: tcp
+`)
+
+	mod, err := ModifyComposeHostPortBytes(content, "compose.yaml", "web", 5, 8080, 8085)
+	if err != nil {
+		t.Fatalf("ModifyComposeHostPortBytes long syntax failed: %v", err)
+	}
+	if !strings.Contains(string(mod), "published: 8085 # comment") {
+		t.Errorf("expected published: 8085 with preserved comment, got:\n%s", string(mod))
+	}
+}
+
+func TestModifyComposeHostPortBytes_FailClosed_InterpolatedAndRange(t *testing.T) {
+	contentInterpolated := []byte(`services:
+  web:
+    image: nginx
+    ports:
+      - "${PORT}:80"
+`)
+	_, err := ModifyComposeHostPortBytes(contentInterpolated, "compose.yaml", "web", 5, 0, 8081)
+	if err == nil {
+		t.Fatal("expected failure on variable interpolation, got nil")
+	}
+	if !strings.Contains(err.Error(), "variable interpolation") {
+		t.Errorf("expected interpolation error message, got: %v", err)
+	}
+
+	contentRange := []byte(`services:
+  web:
+    image: nginx
+    ports:
+      - "8080-8085:80-85"
+`)
+	_, err = ModifyComposeHostPortBytes(contentRange, "compose.yaml", "web", 5, 8080, 8090)
+	if err == nil {
+		t.Fatal("expected failure on port range, got nil")
+	}
+	if !strings.Contains(err.Error(), "port ranges are not supported") {
+		t.Errorf("expected port range error message, got: %v", err)
+	}
+}
